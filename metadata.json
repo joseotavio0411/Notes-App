@@ -1,0 +1,8 @@
+{
+  "name": "App de Notas e Tarefas",
+  "description": "Aplicativo de produtividade pessoal com notas, tarefas e itens com prazo e expiração automática.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
