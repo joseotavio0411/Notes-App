@@ -46,6 +46,9 @@ interface ProductivityDao {
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun deleteTaskById(id: Long)
 
+    @Query("DELETE FROM tasks WHERE text = :text AND recurrence = :recurrence AND visibleFrom > :currentTime AND isCompleted = 0")
+    suspend fun deletePendingFutureTasks(text: String, recurrence: String, currentTime: Long)
+
     // --- Tarefas com Prazo ---
     @Query("SELECT * FROM deadline_tasks ORDER BY isPinned DESC, deadlineTimestamp ASC")
     fun getAllDeadlineTasks(): Flow<List<DeadlineTaskEntity>>
@@ -62,8 +65,14 @@ interface ProductivityDao {
     @Query("DELETE FROM deadline_tasks WHERE id = :id")
     suspend fun deleteDeadlineTaskById(id: Long)
 
+    @Query("DELETE FROM deadline_tasks WHERE text = :text AND recurrence = :recurrence AND visibleFrom > :currentTime AND isCompleted = 0")
+    suspend fun deletePendingFutureDeadlineTasks(text: String, recurrence: String, currentTime: Long)
+
     @Query("DELETE FROM deadline_tasks WHERE isCompleted = 1 AND deadlineTimestamp < :currentTime")
     suspend fun deleteExpiredCompletedDeadlineTasks(currentTime: Long)
+
+    @Query("SELECT * FROM deadline_tasks WHERE isCompleted = 1 AND deadlineTimestamp < :currentTime AND recurrence != 'NONE' AND recurrence IS NOT NULL")
+    suspend fun getExpiredCompletedRecurringDeadlineTasks(currentTime: Long): List<DeadlineTaskEntity>
 
     // --- Notas com Prazo ---
     @Query("SELECT * FROM deadline_notes ORDER BY isPinned DESC, deadlineTimestamp ASC")
@@ -81,6 +90,9 @@ interface ProductivityDao {
     @Query("DELETE FROM deadline_notes WHERE id = :id")
     suspend fun deleteDeadlineNoteById(id: Long)
 
-    @Query("DELETE FROM deadline_notes WHERE deadlineTimestamp < :currentTime")
+    @Query("DELETE FROM deadline_notes WHERE deadlineTimestamp < :currentTime AND (recurrence = 'NONE' OR recurrence IS NULL)")
     suspend fun deleteExpiredDeadlineNotes(currentTime: Long)
+
+    @Query("SELECT * FROM deadline_notes WHERE deadlineTimestamp < :currentTime AND recurrence != 'NONE' AND recurrence IS NOT NULL")
+    suspend fun getExpiredRecurringDeadlineNotes(currentTime: Long): List<DeadlineNoteEntity>
 }

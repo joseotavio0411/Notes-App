@@ -24,6 +24,8 @@ class ProductivityRepository(private val dao: ProductivityDao) {
     suspend fun updateTask(task: TaskEntity) = dao.updateTask(task)
     suspend fun deleteTask(task: TaskEntity) = dao.deleteTask(task)
     suspend fun deleteTaskById(id: Long) = dao.deleteTaskById(id)
+    suspend fun deletePendingFutureTasks(text: String, recurrence: String, currentTime: Long) =
+        dao.deletePendingFutureTasks(text, recurrence, currentTime)
 
     // Deadline Tasks
     val allDeadlineTasks: Flow<List<DeadlineTaskEntity>> = dao.getAllDeadlineTasks()
@@ -32,7 +34,10 @@ class ProductivityRepository(private val dao: ProductivityDao) {
     suspend fun updateDeadlineTask(task: DeadlineTaskEntity) = dao.updateDeadlineTask(task)
     suspend fun deleteDeadlineTask(task: DeadlineTaskEntity) = dao.deleteDeadlineTask(task)
     suspend fun deleteDeadlineTaskById(id: Long) = dao.deleteDeadlineTaskById(id)
+    suspend fun deletePendingFutureDeadlineTasks(text: String, recurrence: String, currentTime: Long) =
+        dao.deletePendingFutureDeadlineTasks(text, recurrence, currentTime)
     suspend fun deleteExpiredCompletedTasks(currentTime: Long) = dao.deleteExpiredCompletedDeadlineTasks(currentTime)
+    suspend fun getExpiredCompletedRecurringDeadlineTasks(currentTime: Long) = dao.getExpiredCompletedRecurringDeadlineTasks(currentTime)
 
     // Deadline Notes
     val allDeadlineNotes: Flow<List<DeadlineNoteEntity>> = dao.getAllDeadlineNotes()
@@ -42,4 +47,5 @@ class ProductivityRepository(private val dao: ProductivityDao) {
     suspend fun deleteDeadlineNote(note: DeadlineNoteEntity) = dao.deleteDeadlineNote(note)
     suspend fun deleteDeadlineNoteById(id: Long) = dao.deleteDeadlineNoteById(id)
     suspend fun deleteExpiredNotes(currentTime: Long) = dao.deleteExpiredDeadlineNotes(currentTime)
+    suspend fun getExpiredRecurringDeadlineNotes(currentTime: Long) = dao.getExpiredRecurringDeadlineNotes(currentTime)
 }

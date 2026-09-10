@@ -18,6 +18,8 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,6 +41,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -48,6 +51,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -92,7 +97,7 @@ import java.util.Calendar
 fun DeadlineTasksScreen(
     tasks: List<DeadlineTaskEntity>,
     currentTime: Long,
-    onAddTask: (text: String, deadlineMillis: Long, isPinned: Boolean) -> Unit,
+    onAddTask: (text: String, deadlineMillis: Long, isPinned: Boolean, recurrence: String) -> Unit,
     onToggleTask: (DeadlineTaskEntity) -> Unit,
     onTogglePinTask: (DeadlineTaskEntity) -> Unit,
     onDeleteTask: (DeadlineTaskEntity) -> Unit,
@@ -102,6 +107,7 @@ fun DeadlineTasksScreen(
     var taskText by remember { mutableStateOf("") }
     var selectedDeadlineMillis by remember { mutableStateOf<Long?>(null) }
     var isPinnedInput by remember { mutableStateOf(false) }
+    var recurrenceInput by remember { mutableStateOf("NONE") }
     var showValidationError by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var taskToDelete by remember { mutableStateOf<DeadlineTaskEntity?>(null) }
@@ -114,6 +120,7 @@ fun DeadlineTasksScreen(
                 taskText = ""
                 selectedDeadlineMillis = null
                 isPinnedInput = false
+                recurrenceInput = "NONE"
                 showValidationError = false
             },
             title = {
@@ -187,6 +194,71 @@ fun DeadlineTasksScreen(
                         )
                     }
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Repetição / Recorrência",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("NONE" to "Nenhuma", "DAILY" to "Diária").forEach { (code, label) ->
+                                val isSelected = recurrenceInput == code
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { recurrenceInput = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("WEEKLY" to "Semanal", "MONTHLY" to "Mensal").forEach { (code, label) ->
+                                val isSelected = recurrenceInput == code
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { recurrenceInput = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
+                    }
+
                     if (isPinnedInput) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -213,10 +285,11 @@ fun DeadlineTasksScreen(
                             showValidationError = true
                             return@Button
                         }
-                        onAddTask(taskText.trim(), selectedDeadlineMillis!!, isPinnedInput)
+                        onAddTask(taskText.trim(), selectedDeadlineMillis!!, isPinnedInput, recurrenceInput)
                         taskText = ""
                         selectedDeadlineMillis = null
                         isPinnedInput = false
+                        recurrenceInput = "NONE"
                         showValidationError = false
                         showAddDialog = false
                     },
@@ -233,6 +306,7 @@ fun DeadlineTasksScreen(
                         taskText = ""
                         selectedDeadlineMillis = null
                         isPinnedInput = false
+                        recurrenceInput = "NONE"
                         showValidationError = false
                     }
                 ) {
@@ -422,7 +496,7 @@ fun DeadlineTasksScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DeadlineTaskItemRow(
     task: DeadlineTaskEntity,
@@ -598,38 +672,72 @@ fun DeadlineTaskItemRow(
                             color = textColor
                         )
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
-                        // Deadline info row
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        // Deadline & Recurrence pills
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            if (isOverdue) {
-                                Icon(
-                                    imageVector = Icons.Default.ErrorOutline,
-                                    contentDescription = "Atrasado",
-                                    tint = if (isDarkTheme) Color(0xFFEF4444) else Color(0xFFDC2626),
-                                    modifier = Modifier.size(14.dp)
+                            Surface(
+                                color = if (isOverdue) {
+                                    (if (isDarkTheme) Color(0xFFEF4444) else Color(0xFFDC2626)).copy(alpha = 0.12f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(
+                                    0.5.dp,
+                                    if (isOverdue) (if (isDarkTheme) Color(0xFFEF4444) else Color(0xFFDC2626)).copy(alpha = 0.35f)
+                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
                                 )
-                                Text(
-                                    text = "Prazo esgotado! (${DateTimeHelper.getTimeRemainingDescription(task.deadlineTimestamp, currentTime)})",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isDarkTheme) Color(0xFFEF4444) else Color(0xFFDC2626)
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.AccessTime,
-                                    contentDescription = "Prazo",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = "${DateTimeHelper.formatDateTime(task.deadlineTimestamp)} • ${DateTimeHelper.getTimeRemainingDescription(task.deadlineTimestamp, currentTime)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (isOverdue) Icons.Default.ErrorOutline else Icons.Default.AccessTime,
+                                        contentDescription = if (isOverdue) "Atrasado" else "Prazo",
+                                        tint = if (isOverdue) (if (isDarkTheme) Color(0xFFEF4444) else Color(0xFFDC2626)) else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isOverdue) "Prazo esgotado! (${DateTimeHelper.getTimeRemainingDescription(task.deadlineTimestamp, currentTime)})"
+                                               else DateTimeHelper.getTimeRemainingDescription(task.deadlineTimestamp, currentTime),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (isOverdue) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isOverdue) (if (isDarkTheme) Color(0xFFEF4444) else Color(0xFFDC2626)) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            if (task.recurrence != "NONE") {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Repeat,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = DateTimeHelper.getRecurrenceLabel(task.recurrence),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

@@ -346,11 +346,12 @@ fun MainScreen(
                                 onToggleChecklistItem = { note, lineIdx -> viewModel.toggleNoteChecklistItem(note, lineIdx) },
                                 unlockedNoteIds = unlockedNoteIds,
                                 onUnlockNote = { noteId, enteredPin, actualPin -> viewModel.unlockNote(noteId, enteredPin, actualPin) },
+                                onUnlockNoteDirectly = { noteId -> viewModel.unlockNoteDirectly(noteId) },
                                 isDarkTheme = isDarkTheme
                             )
                             1 -> TasksScreen(
                                 tasks = filteredTasks,
-                                onAddTask = { text, isPinned -> viewModel.addTask(text, isPinned) },
+                                onAddTask = { text, isPinned, recurrence -> viewModel.addTask(text, isPinned, recurrence) },
                                 onToggleTask = { task -> viewModel.toggleTaskCompletion(task) },
                                 onTogglePinTask = { task -> viewModel.togglePinTask(task) },
                                 onDeleteTask = { task ->
@@ -371,8 +372,8 @@ fun MainScreen(
                             2 -> DeadlineTasksScreen(
                                 tasks = filteredDeadlineTasks,
                                 currentTime = currentTime,
-                                onAddTask = { text, deadline, isPinned ->
-                                    viewModel.addDeadlineTask(text, deadline, isPinned)
+                                onAddTask = { text, deadline, isPinned, recurrence ->
+                                    viewModel.addDeadlineTask(text, deadline, isPinned, recurrence)
                                 },
                                 onToggleTask = { task -> viewModel.toggleDeadlineTaskCompletion(task) },
                                 onTogglePinTask = { task -> viewModel.togglePinDeadlineTask(task) },
@@ -395,8 +396,8 @@ fun MainScreen(
                             3 -> DeadlineNotesScreen(
                                 notes = filteredDeadlineNotes,
                                 currentTime = currentTime,
-                                onAddNote = { title, content, deadline, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath ->
-                                    viewModel.addDeadlineNote(title, content, deadline, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath)
+                                onAddNote = { title, content, deadline, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath ->
+                                    viewModel.addDeadlineNote(title, content, deadline, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath)
                                 },
                                 onUpdateNote = { note -> viewModel.updateDeadlineNote(note) },
                                 onDeleteNote = { note ->
@@ -418,6 +419,7 @@ fun MainScreen(
                                 onToggleChecklistItem = { note, lineIdx -> viewModel.toggleDeadlineNoteChecklistItem(note, lineIdx) },
                                 unlockedNoteIds = unlockedDeadlineNoteIds,
                                 onUnlockNote = { noteId, enteredPin, actualPin -> viewModel.unlockDeadlineNote(noteId, enteredPin, actualPin) },
+                                onUnlockNoteDirectly = { noteId -> viewModel.unlockDeadlineNoteDirectly(noteId) },
                                 isDarkTheme = isDarkTheme
                             )
                         }

@@ -23,18 +23,19 @@ object BiometricHelper {
      * Checks if the device has biometric support available or capable.
      */
     fun canAuthenticate(context: Context): Boolean {
+        // Always allow biometric button so user has access to biometric authentication or digital scanner
+        return true
+    }
+
+    /**
+     * Checks whether real hardware biometric credentials are fully enrolled and ready.
+     */
+    fun isBiometricEnrolled(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val biometricManager = context.getSystemService(BiometricManager::class.java)
             if (biometricManager != null) {
-                val status = biometricManager.canAuthenticate()
-                // Return true if supported or if user has not enrolled yet (so we can prompt them)
-                return status != BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE
+                return biometricManager.canAuthenticate() == BiometricManager.BIOMETRIC_SUCCESS
             }
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val packageManager = context.packageManager
-            return packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_FINGERPRINT) ||
-                    packageManager.hasSystemFeature("android.hardware.biometrics.face")
         }
         return false
     }
@@ -45,8 +46,8 @@ object BiometricHelper {
      */
     fun authenticate(
         activity: Activity,
-        title: String = "Desbloquear Nota",
-        subtitle: String = "Confirme sua identidade",
+        title: String = "Desbloquear",
+        subtitle: String = "Confirme sua identidade para desbloquear",
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -105,7 +106,7 @@ object BiometricHelper {
                             super.onAuthenticationError(errorCode, errString)
                             activity.runOnUiThread {
                                 if (errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
-                                    errorCode == BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON
+                                    errorCode == BiometricPrompt.BIOMETRIC_ERROR_CANCELED
                                 ) {
                                     onError("Autenticação biométrica cancelada. Digite seu PIN.")
                                 } else if (errorCode == BiometricPrompt.BIOMETRIC_ERROR_NO_BIOMETRICS) {

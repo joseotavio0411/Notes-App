@@ -17,6 +17,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,6 +59,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
@@ -65,6 +68,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -101,6 +106,7 @@ import com.example.ui.components.AudioPlayerView
 import com.example.ui.components.ColorPalette
 import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
+import com.example.ui.components.KeepStyleFullscreenNoteEditor
 import com.example.ui.components.LockedNoteOverlay
 import com.example.ui.components.NoteCustomizationToolbar
 import com.example.ui.components.PinUnlockDialog
@@ -115,14 +121,15 @@ import java.util.Calendar
 fun DeadlineNotesScreen(
     notes: List<DeadlineNoteEntity>,
     currentTime: Long,
-    onAddNote: (title: String, content: String, deadlineMillis: Long, colorHex: String, isPinned: Boolean, isLocked: Boolean, lockPin: String?, imageUri: String?, audioPath: String?) -> Unit,
+    onAddNote: (title: String, content: String, deadlineMillis: Long, colorHex: String, isPinned: Boolean, isLocked: Boolean, lockPin: String?, recurrence: String, imageUri: String?, audioPath: String?) -> Unit,
     onUpdateNote: (DeadlineNoteEntity) -> Unit,
     onDeleteNote: (DeadlineNoteEntity) -> Unit,
     onTogglePinNote: (DeadlineNoteEntity) -> Unit,
     onToggleChecklistItem: (DeadlineNoteEntity, Int) -> Unit,
     unlockedNoteIds: Set<Long>,
     onUnlockNote: (noteId: Long, enteredPin: String, actualPin: String?) -> Boolean,
-    isDarkTheme: Boolean
+    isDarkTheme: Boolean,
+    onUnlockNoteDirectly: ((Long) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var showAddDeadlineNoteDialog by remember { mutableStateOf(false) }
@@ -137,8 +144,8 @@ fun DeadlineNotesScreen(
             currentTime = currentTime,
             isDarkTheme = isDarkTheme,
             onDismiss = { showAddDeadlineNoteDialog = false },
-            onSave = { title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath ->
-                onAddNote(title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath)
+            onSave = { title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath ->
+                onAddNote(title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath)
                 showAddDeadlineNoteDialog = false
             }
         )
@@ -153,8 +160,10 @@ fun DeadlineNotesScreen(
                 pendingFullscreenOpen = false
             },
             onSuccess = {
-                val actual = note.lockPin ?: "1234"
-                onUnlockNote(note.id, actual, note.lockPin)
+                onUnlockNoteDirectly?.invoke(note.id) ?: run {
+                    val actual = note.lockPin ?: "1234"
+                    onUnlockNote(note.id, actual, note.lockPin)
+                }
                 val openFs = pendingFullscreenOpen
                 noteToUnlock = null
                 startInFullscreen = openFs
@@ -347,10 +356,14 @@ fun DeadlineNotesScreen(
             currentTime = currentTime,
             isDarkTheme = isDarkTheme,
             startFullscreen = startInFullscreen,
-            onDismiss = { noteToEdit = null },
+            onDismiss = {
+                noteToEdit = null
+                startInFullscreen = false
+            },
             onSave = { updatedNote ->
                 onUpdateNote(updatedNote)
                 noteToEdit = null
+                startInFullscreen = false
             }
         )
     }
@@ -381,6 +394,7 @@ fun DeadlineNotesScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DeadlineNoteCard(
     note: DeadlineNoteEntity,
@@ -391,6 +405,7 @@ fun DeadlineNoteCard(
     onTogglePin: () -> Unit,
     onToggleCheckbox: (Int) -> Unit,
     onEdit: () -> Unit,
+    onOpenFullscreen: () -> Unit,
     onDelete: () -> Unit
 ) {
     val textColor = ColorPalette.getOptimalTextColor(note.colorHex, isDarkTheme)
@@ -436,29 +451,64 @@ fun DeadlineNoteCard(
                     )
                 }
 
-                // Expiration pill
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.padding(bottom = 6.dp)
+                // Expiration and Recurrence pills
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AccessTime,
-                            contentDescription = null,
-                            modifier = Modifier.size(12.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = DateTimeHelper.getTimeRemainingDescription(note.deadlineTimestamp, currentTime),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp),
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = DateTimeHelper.getTimeRemainingDescription(note.deadlineTimestamp, currentTime),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+
+                    if (note.recurrence != "NONE") {
+                        Surface(
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Repeat,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = DateTimeHelper.getRecurrenceLabel(note.recurrence),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -519,41 +569,34 @@ fun DeadlineNoteCard(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
+                // Footer with full screen and delete actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = DateTimeHelper.formatDateOnly(note.deadlineTimestamp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = secondaryTextColor
-                    )
+                    IconButton(
+                        onClick = onOpenFullscreen,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = "Abrir nota em tela cheia",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
 
-                    Row {
-                        IconButton(
-                            onClick = onEdit,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Editar Nota",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        IconButton(
-                            onClick = onDelete,
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Excluir Nota",
-                                modifier = Modifier.size(18.dp),
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Excluir Nota",
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
             }
@@ -566,11 +609,13 @@ fun EditDeadlineNoteDialog(
     note: DeadlineNoteEntity,
     currentTime: Long,
     isDarkTheme: Boolean,
+    startFullscreen: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (DeadlineNoteEntity) -> Unit
 ) {
     val context = LocalContext.current
 
+    var isFullscreen by remember { mutableStateOf(startFullscreen) }
     var title by remember { mutableStateOf(note.title) }
     var content by remember { mutableStateOf(note.content) }
     var colorHex by remember { mutableStateOf(note.colorHex) }
@@ -578,8 +623,11 @@ fun EditDeadlineNoteDialog(
     var isPinned by remember { mutableStateOf(note.isPinned) }
     var isLocked by remember { mutableStateOf(note.isLocked) }
     var lockPin by remember { mutableStateOf(note.lockPin ?: "1234") }
+    var recurrence by remember { mutableStateOf(note.recurrence) }
     var imageUri by remember { mutableStateOf(note.imageUri) }
     var audioPath by remember { mutableStateOf(note.audioPath) }
+    var fontSize by remember { mutableStateOf(note.fontSize) }
+    var fontFamily by remember { mutableStateOf(note.fontFamily) }
 
     var isRecordingVoice by remember { mutableStateOf(false) }
     var showSetPinDialog by remember { mutableStateOf(false) }
@@ -627,228 +675,386 @@ fun EditDeadlineNoteDialog(
         )
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Editar Nota com Prazo", fontWeight = FontWeight.Bold)
-                Row {
-                    IconButton(
-                        onClick = { isPinned = !isPinned },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = "Fixar",
-                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    fun saveAndClose() {
+        onSave(
+            note.copy(
+                title = title.trim(),
+                content = content.trim(),
+                colorHex = colorHex,
+                deadlineTimestamp = deadlineTimestamp,
+                isPinned = isPinned,
+                isLocked = isLocked,
+                lockPin = if (isLocked) lockPin else null,
+                recurrence = recurrence,
+                imageUri = imageUri,
+                audioPath = audioPath,
+                fontSize = fontSize,
+                fontFamily = fontFamily
+            )
+        )
+    }
+
+    if (isFullscreen) {
+        KeepStyleFullscreenNoteEditor(
+            title = title,
+            onTitleChange = { title = it },
+            content = content,
+            onContentChange = { content = it },
+            colorHex = colorHex,
+            onColorChange = { colorHex = it },
+            isPinned = isPinned,
+            onTogglePin = { isPinned = !isPinned },
+            isLocked = isLocked,
+            onToggleLock = {
+                if (isLocked) {
+                    isLocked = false
+                } else {
+                    showSetPinDialog = true
+                }
+            },
+            imageUri = imageUri,
+            onDeleteImage = { imageUri = null },
+            onAddImage = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            audioPath = audioPath,
+            onDeleteAudio = { audioPath = null },
+            onStartVoiceRecording = {
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPerm) {
+                    isRecordingVoice = true
+                } else {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            },
+            onSave = { saveAndClose() },
+            onDismiss = onDismiss,
+            isDarkTheme = isDarkTheme,
+            deadlineTimestamp = deadlineTimestamp,
+            recurrence = recurrence,
+            fontSize = fontSize,
+            onFontSizeChange = { fontSize = it },
+            fontFamily = fontFamily,
+            onFontFamilyChange = { fontFamily = it },
+            onSelectDeadline = {
+                val cal = Calendar.getInstance().apply { timeInMillis = deadlineTimestamp }
+                DatePickerDialog(
+                    context,
+                    { _, year, month, dayOfMonth ->
+                        TimePickerDialog(
+                            context,
+                            { _, hourOfDay, minute ->
+                                val newCal = Calendar.getInstance().apply {
+                                    set(Calendar.YEAR, year)
+                                    set(Calendar.MONTH, month)
+                                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                    set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                    set(Calendar.MINUTE, minute)
+                                }
+                                deadlineTimestamp = newCal.timeInMillis
+                            },
+                            cal.get(Calendar.HOUR_OF_DAY),
+                            cal.get(Calendar.MINUTE),
+                            true
+                        ).show()
+                    },
+                    cal.get(Calendar.YEAR),
+                    cal.get(Calendar.MONTH),
+                    cal.get(Calendar.DAY_OF_MONTH)
+                ).show()
+            }
+        )
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Editar Nota com Prazo", fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { isFullscreen = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Fullscreen,
+                                contentDescription = "Tela Cheia",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { isPinned = !isPinned },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = "Fixar",
+                                tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                if (isLocked) {
+                                    isLocked = false
+                                } else {
+                                    showSetPinDialog = true
+                                }
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                contentDescription = "Bloquear",
+                                tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    imageUri?.let { path ->
+                        AttachedImageView(
+                            imageUriOrPath = path,
+                            onDeleteImage = { imageUri = null },
+                            modifier = Modifier.padding(bottom = 8.dp)
                         )
                     }
 
-                    IconButton(
-                        onClick = {
+                    audioPath?.let { audio ->
+                        AudioPlayerView(
+                            audioPath = audio,
+                            onDeleteAudio = { audioPath = null },
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Título") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedTextField(
+                        value = content,
+                        onValueChange = { content = it },
+                        label = { Text("Conteúdo") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    NoteCustomizationToolbar(
+                        isPinned = isPinned,
+                        onTogglePin = { isPinned = !isPinned },
+                        isLocked = isLocked,
+                        onToggleLock = {
                             if (isLocked) {
                                 isLocked = false
                             } else {
                                 showSetPinDialog = true
                             }
                         },
-                        modifier = Modifier.size(36.dp)
+                        onInsertText = { token ->
+                            content = if (content.isBlank()) token.trimStart() else "$content$token"
+                        },
+                        onAddImage = {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        onStartVoiceRecording = {
+                            val hasPerm = ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.RECORD_AUDIO
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPerm) {
+                                isRecordingVoice = true
+                            } else {
+                                audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            val cal = Calendar.getInstance().apply { timeInMillis = deadlineTimestamp }
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    TimePickerDialog(
+                                        context,
+                                        { _, hourOfDay, minute ->
+                                            val newCal = Calendar.getInstance().apply {
+                                                set(Calendar.YEAR, year)
+                                                set(Calendar.MONTH, month)
+                                                set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                                set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                set(Calendar.MINUTE, minute)
+                                            }
+                                            deadlineTimestamp = newCal.timeInMillis
+                                        },
+                                        cal.get(Calendar.HOUR_OF_DAY),
+                                        cal.get(Calendar.MINUTE),
+                                        true
+                                    ).show()
+                                },
+                                cal.get(Calendar.YEAR),
+                                cal.get(Calendar.MONTH),
+                                cal.get(Calendar.DAY_OF_MONTH)
+                            ).show()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        Icon(
-                            imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                            contentDescription = "Bloquear",
-                            tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Icon(imageVector = Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = "Expira em: ${DateTimeHelper.formatDateTime(deadlineTimestamp)}")
                     }
-                }
-            }
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                imageUri?.let { path ->
-                    AttachedImageView(
-                        imageUriOrPath = path,
-                        onDeleteImage = { imageUri = null },
-                        modifier = Modifier.padding(bottom = 8.dp)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Repetição / Recorrência",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-
-                audioPath?.let { audio ->
-                    AudioPlayerView(
-                        audioPath = audio,
-                        onDeleteAudio = { audioPath = null },
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Título") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = content,
-                    onValueChange = { content = it },
-                    label = { Text("Conteúdo") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(110.dp),
-                    shape = RoundedCornerShape(10.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                NoteCustomizationToolbar(
-                    isPinned = isPinned,
-                    onTogglePin = { isPinned = !isPinned },
-                    isLocked = isLocked,
-                    onToggleLock = {
-                        if (isLocked) {
-                            isLocked = false
-                        } else {
-                            showSetPinDialog = true
-                        }
-                    },
-                    onInsertText = { token ->
-                        content = if (content.isBlank()) token.trimStart() else "$content$token"
-                    },
-                    onAddImage = {
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    },
-                    onStartVoiceRecording = {
-                        val hasPerm = ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (hasPerm) {
-                            isRecordingVoice = true
-                        } else {
-                            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedButton(
-                    onClick = {
-                        val cal = Calendar.getInstance().apply { timeInMillis = deadlineTimestamp }
-                        DatePickerDialog(
-                            context,
-                            { _, year, month, dayOfMonth ->
-                                TimePickerDialog(
-                                    context,
-                                    { _, hourOfDay, minute ->
-                                        val newCal = Calendar.getInstance().apply {
-                                            set(Calendar.YEAR, year)
-                                            set(Calendar.MONTH, month)
-                                            set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                                            set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                            set(Calendar.MINUTE, minute)
-                                        }
-                                        deadlineTimestamp = newCal.timeInMillis
-                                    },
-                                    cal.get(Calendar.HOUR_OF_DAY),
-                                    cal.get(Calendar.MINUTE),
-                                    true
-                                ).show()
-                            },
-                            cal.get(Calendar.YEAR),
-                            cal.get(Calendar.MONTH),
-                            cal.get(Calendar.DAY_OF_MONTH)
-                        ).show()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "Expira em: ${DateTimeHelper.formatDateTime(deadlineTimestamp)}")
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = "Cor do Cartão",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ColorPalette.options.forEach { colorOption ->
-                        val isSelected = colorOption.hex.equals(colorHex, ignoreCase = true)
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(if (isDarkTheme) colorOption.darkColor else colorOption.lightColor)
-                                .border(
-                                    width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
-                                    shape = CircleShape
-                                )
-                                .clickable { colorHex = colorOption.hex }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (isSelected) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .align(Alignment.Center)
+                            listOf("NONE" to "Nenhuma", "DAILY" to "Diária").forEach { (code, label) ->
+                                val isSelected = recurrence == code
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { recurrence = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("WEEKLY" to "Semanal", "MONTHLY" to "Mensal").forEach { (code, label) ->
+                                val isSelected = recurrence == code
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { recurrence = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
                                 )
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Cor do Cartão",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ColorPalette.options.forEach { colorOption ->
+                            val isSelected = colorOption.hex.equals(colorHex, ignoreCase = true)
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDarkTheme) colorOption.darkColor else colorOption.lightColor)
+                                    .border(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { colorHex = colorOption.hex }
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .align(Alignment.Center)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { saveAndClose() },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancelar")
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(
-                        note.copy(
-                            title = title.trim(),
-                            content = content.trim(),
-                            colorHex = colorHex,
-                            deadlineTimestamp = deadlineTimestamp,
-                            isPinned = isPinned,
-                            isLocked = isLocked,
-                            lockPin = if (isLocked) lockPin else null,
-                            imageUri = imageUri,
-                            audioPath = audioPath
-                        )
-                    )
-                },
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Salvar")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancelar")
-            }
-        }
-    )
+        )
+    }
 }
 
 @Composable
@@ -864,6 +1070,7 @@ fun CreateDeadlineNoteDialog(
         isPinned: Boolean,
         isLocked: Boolean,
         lockPin: String?,
+        recurrence: String,
         imageUri: String?,
         audioPath: String?
     ) -> Unit
@@ -877,12 +1084,14 @@ fun CreateDeadlineNoteDialog(
     var isPinned by remember { mutableStateOf(false) }
     var isLocked by remember { mutableStateOf(false) }
     var lockPin by remember { mutableStateOf<String?>("1234") }
+    var recurrence by remember { mutableStateOf("NONE") }
     var imageUri by remember { mutableStateOf<String?>(null) }
     var audioPath by remember { mutableStateOf<String?>(null) }
     var showValidationError by remember { mutableStateOf(false) }
 
     var isRecordingVoice by remember { mutableStateOf(false) }
     var showSetPinDialog by remember { mutableStateOf(false) }
+    var isFullscreen by remember { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -902,6 +1111,23 @@ fun CreateDeadlineNoteDialog(
             isRecordingVoice = true
         } else {
             Toast.makeText(context, "Permissão de gravação necessária", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun saveAndClose() {
+        if (title.isNotBlank() || content.isNotBlank() || imageUri != null || audioPath != null) {
+            onSave(
+                title.trim(),
+                content.trim(),
+                deadlineTimestamp,
+                colorHex,
+                isPinned,
+                isLocked,
+                if (isLocked) lockPin else null,
+                recurrence,
+                imageUri,
+                audioPath
+            )
         }
     }
 
@@ -927,26 +1153,109 @@ fun CreateDeadlineNoteDialog(
         )
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Nova Nota com Prazo", fontWeight = FontWeight.Bold)
-                Row {
-                    IconButton(
-                        onClick = { isPinned = !isPinned },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = "Fixar",
-                            tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+    if (isFullscreen) {
+        KeepStyleFullscreenNoteEditor(
+            title = title,
+            onTitleChange = { title = it },
+            content = content,
+            onContentChange = { content = it },
+            colorHex = colorHex,
+            onColorChange = { colorHex = it },
+            isPinned = isPinned,
+            onTogglePin = { isPinned = !isPinned },
+            isLocked = isLocked,
+            onToggleLock = {
+                if (isLocked) {
+                    isLocked = false
+                } else {
+                    showSetPinDialog = true
+                }
+            },
+            imageUri = imageUri,
+            onDeleteImage = { imageUri = null },
+            onAddImage = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            audioPath = audioPath,
+            onDeleteAudio = { audioPath = null },
+            onStartVoiceRecording = {
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPerm) {
+                    isRecordingVoice = true
+                } else {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            },
+            onSave = { saveAndClose() },
+            onDismiss = onDismiss,
+            isDarkTheme = isDarkTheme,
+            deadlineTimestamp = deadlineTimestamp,
+            recurrence = recurrence,
+            onSelectDeadline = {
+                val cal = Calendar.getInstance().apply { timeInMillis = deadlineTimestamp }
+                DatePickerDialog(
+                    context,
+                    { _, year, month, dayOfMonth ->
+                        TimePickerDialog(
+                            context,
+                            { _, hourOfDay, minute ->
+                                val newCal = Calendar.getInstance().apply {
+                                    set(Calendar.YEAR, year)
+                                    set(Calendar.MONTH, month)
+                                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                                    set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                    set(Calendar.MINUTE, minute)
+                                }
+                                deadlineTimestamp = newCal.timeInMillis
+                            },
+                            cal.get(Calendar.HOUR_OF_DAY),
+                            cal.get(Calendar.MINUTE),
+                            true
+                        ).show()
+                    },
+                    cal.get(Calendar.YEAR),
+                    cal.get(Calendar.MONTH),
+                    cal.get(Calendar.DAY_OF_MONTH)
+                ).show()
+            }
+        )
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Nova Nota com Prazo", fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { isFullscreen = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Fullscreen,
+                                contentDescription = "Abrir em tela cheia",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { isPinned = !isPinned },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = "Fixar",
+                                tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
                     IconButton(
                         onClick = {
@@ -1091,6 +1400,71 @@ fun CreateDeadlineNoteDialog(
                     Text(text = "Expira em: ${DateTimeHelper.formatDateTime(deadlineTimestamp)}")
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Repetição / Recorrência",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("NONE" to "Nenhuma", "DAILY" to "Diária").forEach { (code, label) ->
+                            val isSelected = recurrence == code
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { recurrence = code },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("WEEKLY" to "Semanal", "MONTHLY" to "Mensal").forEach { (code, label) ->
+                            val isSelected = recurrence == code
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { recurrence = code },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
+                    }
+                }
+
                 if (showValidationError) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
@@ -1157,6 +1531,7 @@ fun CreateDeadlineNoteDialog(
                             isPinned,
                             isLocked,
                             if (isLocked) lockPin else null,
+                            recurrence,
                             imageUri,
                             audioPath
                         )
@@ -1174,4 +1549,5 @@ fun CreateDeadlineNoteDialog(
             }
         }
     )
+    }
 }

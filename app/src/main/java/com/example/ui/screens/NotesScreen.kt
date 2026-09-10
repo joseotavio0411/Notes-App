@@ -103,6 +103,7 @@ import com.example.ui.components.AudioPlayerView
 import com.example.ui.components.ColorPalette
 import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
+import com.example.ui.components.KeepStyleFullscreenNoteEditor
 import com.example.ui.components.LockedNoteOverlay
 import com.example.ui.components.NoteCustomizationToolbar
 import com.example.ui.components.PinUnlockDialog
@@ -123,6 +124,7 @@ fun NotesScreen(
     onToggleChecklistItem: (NoteEntity, Int) -> Unit,
     unlockedNoteIds: Set<Long>,
     onUnlockNote: (noteId: Long, enteredPin: String, actualPin: String?) -> Boolean,
+    onUnlockNoteDirectly: ((Long) -> Unit)? = null,
     isDarkTheme: Boolean = isSystemInDarkTheme()
 ) {
     val context = LocalContext.current
@@ -156,8 +158,10 @@ fun NotesScreen(
                 pendingFullscreenOpen = false
             },
             onSuccess = {
-                val actual = note.lockPin ?: "1234"
-                onUnlockNote(note.id, actual, note.lockPin)
+                onUnlockNoteDirectly?.invoke(note.id) ?: run {
+                    val actual = note.lockPin ?: "1234"
+                    onUnlockNote(note.id, actual, note.lockPin)
+                }
                 val openFs = pendingFullscreenOpen
                 noteToUnlock = null
                 startInFullscreen = openFs
@@ -664,6 +668,8 @@ fun EditNoteDialog(
     var lockPin by remember { mutableStateOf(note.lockPin ?: "1234") }
     var imageUri by remember { mutableStateOf(note.imageUri) }
     var audioPath by remember { mutableStateOf(note.audioPath) }
+    var fontSize by remember { mutableStateOf(note.fontSize) }
+    var fontFamily by remember { mutableStateOf(note.fontFamily) }
 
     var isRecordingVoice by remember { mutableStateOf(false) }
     var showSetPinDialog by remember { mutableStateOf(false) }
@@ -722,233 +728,59 @@ fun EditNoteDialog(
                 lockPin = if (isLocked) lockPin else null,
                 imageUri = imageUri,
                 audioPath = audioPath,
+                fontSize = fontSize,
+                fontFamily = fontFamily,
                 updatedAt = System.currentTimeMillis()
             )
         )
     }
 
     if (isFullscreen) {
-        Dialog(
-            onDismissRequest = onDismiss,
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
-            )
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing),
-                color = ColorPalette.getSurfaceColor(colorHex, isDarkTheme)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    // Fullscreen Top Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Fechar tela cheia"
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Nota em Tela Cheia",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { isFullscreen = false },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FullscreenExit,
-                                    contentDescription = "Reduzir tela",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { isPinned = !isPinned },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                                    contentDescription = "Fixar",
-                                    tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    if (isLocked) {
-                                        isLocked = false
-                                    } else {
-                                        showSetPinDialog = true
-                                    }
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                                    contentDescription = "Bloquear",
-                                    tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            Button(
-                                onClick = { saveAndClose() },
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Salvar")
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 12.dp)
-                    ) {
-                        imageUri?.let { path ->
-                            AttachedImageView(
-                                imageUriOrPath = path,
-                                onDeleteImage = { imageUri = null },
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                        }
-
-                        audioPath?.let { audio ->
-                            AudioPlayerView(
-                                audioPath = audio,
-                                onDeleteAudio = { audioPath = null },
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = title,
-                            onValueChange = { title = it },
-                            label = { Text("Título da nota") },
-                            textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        OutlinedTextField(
-                            value = content,
-                            onValueChange = { content = it },
-                            label = { Text("Conteúdo da nota (suporta checklists [ ] e markdown)") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 280.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        NoteCustomizationToolbar(
-                            isPinned = isPinned,
-                            onTogglePin = { isPinned = !isPinned },
-                            isLocked = isLocked,
-                            onToggleLock = {
-                                if (isLocked) {
-                                    isLocked = false
-                                } else {
-                                    showSetPinDialog = true
-                                }
-                            },
-                            onInsertText = { token ->
-                                content = if (content.isBlank()) token.trimStart() else "$content$token"
-                            },
-                            onAddImage = {
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            },
-                            onStartVoiceRecording = {
-                                val hasPerm = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPerm) {
-                                    isRecordingVoice = true
-                                } else {
-                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            }
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "Cor da Nota",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ColorPalette.options.forEach { colorOption ->
-                                val isSelected = colorOption.hex.equals(colorHex, ignoreCase = true)
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isDarkTheme) colorOption.darkColor else colorOption.lightColor)
-                                        .border(
-                                            width = if (isSelected) 2.5.dp else 1.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
-                                            shape = CircleShape
-                                        )
-                                        .clickable { colorHex = colorOption.hex }
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .align(Alignment.Center)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+        KeepStyleFullscreenNoteEditor(
+            title = title,
+            onTitleChange = { title = it },
+            content = content,
+            onContentChange = { content = it },
+            colorHex = colorHex,
+            onColorChange = { colorHex = it },
+            isPinned = isPinned,
+            onTogglePin = { isPinned = !isPinned },
+            isLocked = isLocked,
+            onToggleLock = {
+                if (isLocked) {
+                    isLocked = false
+                } else {
+                    showSetPinDialog = true
                 }
-            }
-        }
+            },
+            imageUri = imageUri,
+            onDeleteImage = { imageUri = null },
+            onAddImage = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            audioPath = audioPath,
+            onDeleteAudio = { audioPath = null },
+            onStartVoiceRecording = {
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPerm) {
+                    isRecordingVoice = true
+                } else {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            },
+            onSave = { saveAndClose() },
+            onDismiss = onDismiss,
+            isDarkTheme = isDarkTheme,
+            fontSize = fontSize,
+            onFontSizeChange = { fontSize = it },
+            fontFamily = fontFamily,
+            onFontFamilyChange = { fontFamily = it }
+        )
     } else {
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -1116,7 +948,6 @@ fun EditNoteDialog(
                             }
                         }
                     }
-                }
             },
             confirmButton = {
                 Button(
@@ -1224,229 +1055,47 @@ fun CreateNoteDialog(
     }
 
     if (isFullscreen) {
-        Dialog(
-            onDismissRequest = onDismiss,
-            properties = DialogProperties(
-                usePlatformDefaultWidth = false,
-                decorFitsSystemWindows = false
-            )
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing),
-                color = ColorPalette.getSurfaceColor(colorHex, isDarkTheme)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    // Fullscreen Top Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "Fechar tela cheia"
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Nova Nota em Tela Cheia",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = { isFullscreen = false },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FullscreenExit,
-                                    contentDescription = "Reduzir tela",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { isPinned = !isPinned },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                                    contentDescription = "Fixar",
-                                    tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    if (isLocked) {
-                                        isLocked = false
-                                    } else {
-                                        showSetPinDialog = true
-                                    }
-                                },
-                                modifier = Modifier.size(40.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                                    contentDescription = "Bloquear",
-                                    tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            Button(
-                                onClick = { saveAndClose() },
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Salvar")
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(vertical = 12.dp)
-                    ) {
-                        imageUri?.let { path ->
-                            AttachedImageView(
-                                imageUriOrPath = path,
-                                onDeleteImage = { imageUri = null },
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                        }
-
-                        audioPath?.let { audio ->
-                            AudioPlayerView(
-                                audioPath = audio,
-                                onDeleteAudio = { audioPath = null },
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = title,
-                            onValueChange = { title = it },
-                            label = { Text("Título da nota") },
-                            placeholder = { Text("Título da nota...") },
-                            textStyle = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        OutlinedTextField(
-                            value = content,
-                            onValueChange = { content = it },
-                            label = { Text("Conteúdo da nota (suporta checklists [ ] e markdown)") },
-                            placeholder = { Text("Escreva sua nota, markdown ou checklist...") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 280.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        NoteCustomizationToolbar(
-                            isPinned = isPinned,
-                            onTogglePin = { isPinned = !isPinned },
-                            isLocked = isLocked,
-                            onToggleLock = {
-                                if (isLocked) {
-                                    isLocked = false
-                                } else {
-                                    showSetPinDialog = true
-                                }
-                            },
-                            onInsertText = { token ->
-                                content = if (content.isBlank()) token.trimStart() else "$content$token"
-                            },
-                            onAddImage = {
-                                photoPickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            },
-                            onStartVoiceRecording = {
-                                val hasPerm = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPerm) {
-                                    isRecordingVoice = true
-                                } else {
-                                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                }
-                            }
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "Cor da Nota",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ColorPalette.options.forEach { colorOption ->
-                                val isSelected = colorOption.hex.equals(colorHex, ignoreCase = true)
-                                Box(
-                                    modifier = Modifier
-                                        .size(30.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isDarkTheme) colorOption.darkColor else colorOption.lightColor)
-                                        .border(
-                                            width = if (isSelected) 2.5.dp else 1.dp,
-                                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
-                                            shape = CircleShape
-                                        )
-                                        .clickable { colorHex = colorOption.hex }
-                                ) {
-                                    if (isSelected) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .align(Alignment.Center)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+        KeepStyleFullscreenNoteEditor(
+            title = title,
+            onTitleChange = { title = it },
+            content = content,
+            onContentChange = { content = it },
+            colorHex = colorHex,
+            onColorChange = { colorHex = it },
+            isPinned = isPinned,
+            onTogglePin = { isPinned = !isPinned },
+            isLocked = isLocked,
+            onToggleLock = {
+                if (isLocked) {
+                    isLocked = false
+                } else {
+                    showSetPinDialog = true
                 }
-            }
-        }
+            },
+            imageUri = imageUri,
+            onDeleteImage = { imageUri = null },
+            onAddImage = {
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            },
+            audioPath = audioPath,
+            onDeleteAudio = { audioPath = null },
+            onStartVoiceRecording = {
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPerm) {
+                    isRecordingVoice = true
+                } else {
+                    audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            },
+            onSave = { saveAndClose() },
+            onDismiss = onDismiss,
+            isDarkTheme = isDarkTheme
+        )
     } else {
         AlertDialog(
             onDismissRequest = onDismiss,
@@ -1619,7 +1268,6 @@ fun CreateNoteDialog(
                             }
                         }
                     }
-                }
             },
             confirmButton = {
                 Button(

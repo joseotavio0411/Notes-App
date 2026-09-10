@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
@@ -45,6 +46,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -52,6 +55,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
@@ -78,19 +82,21 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.TaskEntity
+import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
     tasks: List<TaskEntity>,
-    onAddTask: (text: String, isPinned: Boolean) -> Unit,
+    onAddTask: (text: String, isPinned: Boolean, recurrence: String) -> Unit,
     onToggleTask: (TaskEntity) -> Unit,
     onTogglePinTask: (TaskEntity) -> Unit,
     onDeleteTask: (TaskEntity) -> Unit
 ) {
     var newTaskText by remember { mutableStateOf("") }
     var newTaskIsPinned by remember { mutableStateOf(false) }
+    var newTaskRecurrence by remember { mutableStateOf("NONE") }
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var taskToDelete by remember { mutableStateOf<TaskEntity?>(null) }
 
@@ -101,6 +107,7 @@ fun TasksScreen(
                 showAddTaskDialog = false
                 newTaskText = ""
                 newTaskIsPinned = false
+                newTaskRecurrence = "NONE"
             },
             title = {
                 Row(
@@ -141,14 +148,80 @@ fun TasksScreen(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 if (newTaskText.isNotBlank()) {
-                                    onAddTask(newTaskText.trim(), newTaskIsPinned)
+                                    onAddTask(newTaskText.trim(), newTaskIsPinned, newTaskRecurrence)
                                     newTaskText = ""
                                     newTaskIsPinned = false
+                                    newTaskRecurrence = "NONE"
                                     showAddTaskDialog = false
                                 }
                             }
                         )
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "Repetição / Recorrência",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("NONE" to "Nenhuma", "DAILY" to "Diária").forEach { (code, label) ->
+                                val isSelected = newTaskRecurrence == code
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { newTaskRecurrence = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("WEEKLY" to "Semanal", "MONTHLY" to "Mensal").forEach { (code, label) ->
+                                val isSelected = newTaskRecurrence == code
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { newTaskRecurrence = code },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
+                    }
+
                     if (newTaskIsPinned) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -163,9 +236,10 @@ fun TasksScreen(
                 Button(
                     onClick = {
                         if (newTaskText.isNotBlank()) {
-                            onAddTask(newTaskText.trim(), newTaskIsPinned)
+                            onAddTask(newTaskText.trim(), newTaskIsPinned, newTaskRecurrence)
                             newTaskText = ""
                             newTaskIsPinned = false
+                            newTaskRecurrence = "NONE"
                             showAddTaskDialog = false
                         }
                     },
@@ -182,6 +256,7 @@ fun TasksScreen(
                         showAddTaskDialog = false
                         newTaskText = ""
                         newTaskIsPinned = false
+                        newTaskRecurrence = "NONE"
                     }
                 ) {
                     Text("Cancelar")
@@ -524,20 +599,50 @@ fun TaskItemRow(
                     )
                 )
 
-                Text(
-                    text = task.text,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
-                    ),
-                    color = if (task.isCompleted) {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+                Column(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 4.dp)
-                )
+                ) {
+                    Text(
+                        text = task.text,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                        ),
+                        color = if (task.isCompleted) {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+
+                    if (task.recurrence != "NONE") {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Repeat,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = DateTimeHelper.getRecurrenceLabel(task.recurrence),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                        }
+                    }
+                }
 
                 IconButton(
                     onClick = {

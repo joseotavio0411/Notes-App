@@ -31,17 +31,18 @@ object DateTimeHelper {
             val overdueMillis = -diffMillis
             val overdueMinutes = overdueMillis / (60 * 1000)
             return if (overdueMinutes < 60) {
-                "Atrasado há ${overdueMinutes.coerceAtLeast(1)} min"
+                "Atrasado há ${overdueMinutes.coerceAtLeast(1)}m"
             } else {
                 val hours = overdueMinutes / 60
-                "Atrasado há ${hours}h ${overdueMinutes % 60}m"
+                val mins = overdueMinutes % 60
+                if (mins == 0L) "Atrasado há ${hours}h" else "Atrasado há ${hours}h ${mins}m"
             }
         }
 
         val remainingMinutes = diffMillis / (60 * 1000)
         return when {
-            remainingMinutes < 1 -> "Expira em menos de 1 min"
-            remainingMinutes < 60 -> "Expira em $remainingMinutes min"
+            remainingMinutes < 1 -> "Expira em <1m"
+            remainingMinutes < 60 -> "Expira em ${remainingMinutes}m"
             remainingMinutes < 24 * 60 -> {
                 val hours = remainingMinutes / 60
                 val mins = remainingMinutes % 60
@@ -49,8 +50,78 @@ object DateTimeHelper {
             }
             else -> {
                 val days = remainingMinutes / (24 * 60)
-                "Expira em ${days} dia(s)"
+                "Expira em ${days}d"
             }
+        }
+    }
+
+    fun getNextRecurrence(currentDeadline: Long, recurrence: String): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = currentDeadline
+        }
+        val now = System.currentTimeMillis()
+
+        do {
+            when (recurrence) {
+                "DAILY" -> cal.add(Calendar.DAY_OF_YEAR, 1)
+                "WEEKLY" -> cal.add(Calendar.WEEK_OF_YEAR, 1)
+                "MONTHLY" -> cal.add(Calendar.MONTH, 1)
+                else -> return currentDeadline
+            }
+        } while (cal.timeInMillis <= now)
+
+        return cal.timeInMillis
+    }
+
+    /**
+     * Returns the epoch millis for the beginning of the next recurrence period:
+     * - DAILY: 00:00:00 of the following day.
+     * - WEEKLY: 00:00:00 of the next week (Monday).
+     * - MONTHLY: 00:00:00 of day 1 of the following month.
+     */
+    fun getNextPeriodStart(recurrence: String, fromTimeMillis: Long = System.currentTimeMillis()): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = fromTimeMillis
+        }
+        return when (recurrence) {
+            "DAILY" -> {
+                cal.add(Calendar.DAY_OF_YEAR, 1)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                cal.timeInMillis
+            }
+            "WEEKLY" -> {
+                cal.add(Calendar.DAY_OF_YEAR, 1)
+                while (cal.get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {
+                    cal.add(Calendar.DAY_OF_YEAR, 1)
+                }
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                cal.timeInMillis
+            }
+            "MONTHLY" -> {
+                cal.add(Calendar.MONTH, 1)
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                cal.timeInMillis
+            }
+            else -> fromTimeMillis
+        }
+    }
+
+    fun getRecurrenceLabel(recurrence: String): String {
+        return when (recurrence) {
+            "DAILY" -> "Diário"
+            "WEEKLY" -> "Semanal"
+            "MONTHLY" -> "Mensal"
+            else -> "Não repete"
         }
     }
 

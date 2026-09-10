@@ -1,5 +1,5 @@
 {
-  "name": "App de Notas e Tarefas",
+  "name": "Notes",
   "description": "Aplicativo de produtividade pessoal com notas, tarefas e itens com prazo e expiração automática.",
   "requestFramePermissions": [],
   "majorCapabilities": [

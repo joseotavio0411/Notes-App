@@ -13,6 +13,11 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,35 +26,71 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
+import androidx.compose.material.icons.automirrored.filled.FormatAlignRight
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.AddBox
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.FormatAlignCenter
 import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.FormatStrikethrough
+import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.FontDownload
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Title
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,17 +99,39 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.rememberModalBottomSheetState
+import android.view.WindowManager
+import androidx.core.view.WindowCompat
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -86,6 +149,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -599,9 +663,28 @@ fun RichContentView(
     content: String,
     modifier: Modifier = Modifier,
     maxLines: Int = Int.MAX_VALUE,
+    fontSize: Int = 16,
+    fontFamily: String = "DEFAULT",
+    textAlign: TextAlign = TextAlign.Start,
     onToggleCheckbox: ((Int) -> Unit)? = null
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
+    val baseFontFamily = MarkdownHelper.getFontFamily(fontFamily)
+
+    if (content.isBlank()) {
+        Text(
+            text = "Nenhum conteúdo para visualização. Toque em Editar para escrever.",
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = fontSize.sp,
+                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                fontFamily = baseFontFamily
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = modifier.padding(vertical = 8.dp)
+        )
+        return
+    }
+
     val lines = remember(content) { content.lines() }
     val displayLines = if (maxLines != Int.MAX_VALUE) lines.take(maxLines) else lines
 
@@ -612,6 +695,60 @@ fun RichContentView(
         displayLines.forEachIndexed { index, line ->
             val trimmed = line.trimStart()
             when {
+                trimmed.startsWith("# ") -> {
+                    val headingText = trimmed.removePrefix("# ")
+                    Text(
+                        text = headingText,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = (fontSize * 1.3f).sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = baseFontFamily,
+                            textAlign = textAlign
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                    )
+                }
+                trimmed.startsWith("## ") -> {
+                    val headingText = trimmed.removePrefix("## ")
+                    Text(
+                        text = headingText,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontSize = (fontSize * 1.15f).sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = baseFontFamily,
+                            textAlign = textAlign
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                    )
+                }
+                trimmed.startsWith("> ") -> {
+                    val quoteText = trimmed.removePrefix("> ")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(3.dp)
+                                .height(22.dp)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = quoteText,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = fontSize.sp,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                fontFamily = baseFontFamily,
+                                textAlign = textAlign
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
                 trimmed.startsWith("[ ] ") || trimmed.startsWith("- [ ] ") -> {
                     val label = trimmed.removePrefix("- ").removePrefix("[ ] ")
                     Row(
@@ -633,7 +770,11 @@ fun RichContentView(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = fontSize.sp,
+                                fontFamily = baseFontFamily,
+                                textAlign = textAlign
+                            ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -660,6 +801,9 @@ fun RichContentView(
                         Text(
                             text = label,
                             style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = fontSize.sp,
+                                fontFamily = baseFontFamily,
+                                textAlign = textAlign,
                                 textDecoration = TextDecoration.LineThrough,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -674,13 +818,21 @@ fun RichContentView(
                     ) {
                         Text(
                             text = "•",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = fontSize.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = baseFontFamily
+                            ),
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(end = 6.dp)
                         )
                         Text(
                             text = label,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = fontSize.sp,
+                                fontFamily = baseFontFamily,
+                                textAlign = textAlign
+                            ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -692,10 +844,17 @@ fun RichContentView(
                         }
                         Text(
                             text = annotatedText,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontSize = fontSize.sp,
+                                fontFamily = baseFontFamily,
+                                textAlign = textAlign
+                            ),
                             color = MaterialTheme.colorScheme.onSurface,
                             overflow = TextOverflow.Ellipsis
                         )
+                    } else {
+                        // Preserves empty line spacing between paragraphs in preview
+                        Spacer(modifier = Modifier.height((fontSize * 0.7f).dp))
                     }
                 }
             }
@@ -720,60 +879,1425 @@ fun LockedNoteOverlay(
             modifier = modifier
                 .fillMaxWidth()
                 .clickable { onUnlockClick() }
+                .padding(vertical = 20.dp, horizontal = 16.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // Blurred/Obscured background preview
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .blur(16.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                content()
-            }
-
-            // Locked overlay banner
-            Surface(
-                modifier = Modifier.matchParentSize(),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
+                Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                        .size(46.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-                        contentAlignment = Alignment.Center
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Bloqueado",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Nota Bloqueada",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Lock,
+                            imageVector = Icons.Default.LockOpen,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Toque para desbloquear",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            textAlign = TextAlign.Center
                         )
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Nota Bloqueada",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Toque para desbloquear",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
                 }
             }
         }
     } else {
         content()
+    }
+}
+
+// ==========================================
+// GOOGLE KEEP STYLE FULLSCREEN NOTE EDITOR
+// ==========================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun KeepStyleFullscreenNoteEditor(
+    title: String,
+    onTitleChange: (String) -> Unit,
+    content: String,
+    onContentChange: (String) -> Unit,
+    colorHex: String,
+    onColorChange: (String) -> Unit,
+    isPinned: Boolean,
+    onTogglePin: () -> Unit,
+    isLocked: Boolean,
+    onToggleLock: () -> Unit,
+    imageUri: String?,
+    onDeleteImage: () -> Unit,
+    onAddImage: () -> Unit,
+    audioPath: String?,
+    onDeleteAudio: () -> Unit,
+    onStartVoiceRecording: () -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+    isDarkTheme: Boolean,
+    deadlineTimestamp: Long? = null,
+    recurrence: String? = null,
+    fontSize: Int = 16,
+    onFontSizeChange: ((Int) -> Unit)? = null,
+    fontFamily: String = "DEFAULT",
+    onFontFamilyChange: ((String) -> Unit)? = null,
+    onSelectDeadline: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null
+) {
+    var showFloatingToolbar by remember { mutableStateOf(false) }
+    var showFloatingColorPicker by remember { mutableStateOf(false) }
+    var showFloatingFontPicker by remember { mutableStateOf(false) }
+    var showTopMoreMenu by remember { mutableStateOf(false) }
+
+    var currentFontSize by remember(fontSize) { mutableIntStateOf(fontSize) }
+    var currentFontFamily by remember(fontFamily) { mutableStateOf(fontFamily) }
+    var currentTextAlign by remember { mutableStateOf(TextAlign.Start) }
+    var isPreviewMode by remember { mutableStateOf(false) }
+
+    var contentTextFieldValue by remember {
+        mutableStateOf(TextFieldValue(content, TextRange(content.length)))
+    }
+
+    LaunchedEffect(content) {
+        if (content != contentTextFieldValue.text) {
+            contentTextFieldValue = TextFieldValue(content, TextRange(content.length))
+        }
+    }
+
+    val applyFormat: (NoteFormatType) -> Unit = { type ->
+        val (newText, newSelection) = MarkdownHelper.applyFormatting(
+            currentText = contentTextFieldValue.text,
+            selection = contentTextFieldValue.selection,
+            formatType = type
+        )
+        contentTextFieldValue = TextFieldValue(newText, newSelection)
+        onContentChange(newText)
+    }
+
+    val updateFontSize: (Int) -> Unit = { newSize ->
+        val clamped = newSize.coerceIn(12, 36)
+        currentFontSize = clamped
+        onFontSizeChange?.invoke(clamped)
+    }
+
+    val updateFontFamily: (String) -> Unit = { newFamily ->
+        currentFontFamily = newFamily
+        onFontFamilyChange?.invoke(newFamily)
+    }
+
+    Dialog(
+        onDismissRequest = {
+            onSave()
+            onDismiss()
+        },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        val dialogView = LocalView.current
+        DisposableEffect(dialogView) {
+            runCatching {
+                var parent = dialogView.parent
+                while (parent != null && parent !is DialogWindowProvider) {
+                    parent = parent.parent
+                }
+                (parent as? DialogWindowProvider)?.window?.let { window ->
+                    window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                    WindowCompat.setDecorFitsSystemWindows(window, false)
+                }
+            }
+            onDispose {}
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = ColorPalette.getSurfaceColor(colorHex, isDarkTheme)
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .imePadding()
+                ) {
+                // TOP BAR (Google Keep style with well-formatted Save button)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 6.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            onSave()
+                            onDismiss()
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Voltar e salvar"
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Prominent Preview / Edit Toggle Chip
+                        FilterChip(
+                            selected = isPreviewMode,
+                            onClick = { isPreviewMode = !isPreviewMode },
+                            label = {
+                                Text(
+                                    text = if (isPreviewMode) "Editar" else "Prévia",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                selectedLeadingIconColor = MaterialTheme.colorScheme.primary
+                            ),
+                            modifier = Modifier.height(34.dp)
+                        )
+
+                        IconButton(
+                            onClick = onTogglePin,
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = if (isPinned) "Desafixar" else "Fixar nota",
+                                tint = if (isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(
+                            onClick = onToggleLock,
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                contentDescription = if (isLocked) "Remover PIN" else "Proteger com PIN",
+                                tint = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Overflow menu in top bar for media & note options
+                        Box {
+                            IconButton(
+                                onClick = { showTopMoreMenu = true },
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Mais opções",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showTopMoreMenu,
+                                onDismissRequest = { showTopMoreMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Adicionar imagem") },
+                                    onClick = {
+                                        showTopMoreMenu = false
+                                        onAddImage()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Image, null) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Gravação de voz") },
+                                    onClick = {
+                                        showTopMoreMenu = false
+                                        onStartVoiceRecording()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Mic, null) }
+                                )
+                                if (onSelectDeadline != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Prazo de expiração") },
+                                        onClick = {
+                                            showTopMoreMenu = false
+                                            onSelectDeadline()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.AccessTime, null) }
+                                    )
+                                }
+                                if (onDelete != null) {
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text("Excluir nota", color = MaterialTheme.colorScheme.error) },
+                                        onClick = {
+                                            showTopMoreMenu = false
+                                            onDelete()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Beautifully formatted Save button (Pill with Check icon + Salvar text)
+                        FilledTonalButton(
+                            onClick = {
+                                onSave()
+                                onDismiss()
+                            },
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .height(38.dp)
+                                .testTag("fullscreen_save_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Salvar",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
+                // Deadline and Recurrence chip row
+                val hasDeadline = deadlineTimestamp != null
+                val hasRecurrence = recurrence != null && recurrence != "NONE"
+                if (hasDeadline || hasRecurrence) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (hasDeadline) {
+                            Surface(
+                                onClick = { onSelectDeadline?.invoke() },
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccessTime,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp),
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = DateTimeHelper.getTimeRemainingDescription(deadlineTimestamp!!, System.currentTimeMillis()),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                            }
+                        }
+
+                        if (hasRecurrence) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Repeat,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(13.dp),
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        text = DateTimeHelper.getRecurrenceLabel(recurrence!!),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Notice if preview mode is on
+                if (isPreviewMode) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Visibility,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Prévia visual formatada",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            TextButton(
+                                onClick = { isPreviewMode = false },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Text(
+                                    text = "Editar",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // NOTE BODY: Título & Nota (Frameless, matching Google Keep layout)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 6.dp)
+                ) {
+                    imageUri?.let { path ->
+                        AttachedImageView(
+                            imageUriOrPath = path,
+                            onDeleteImage = onDeleteImage,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                    }
+
+                    audioPath?.let { audio ->
+                        AudioPlayerView(
+                            audioPath = audio,
+                            onDeleteAudio = onDeleteAudio,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                    }
+
+                    // Título (aligned with content margin, no internal offset)
+                    if (isPreviewMode) {
+                        if (title.isNotBlank()) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontSize = (currentFontSize + 6).sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = MarkdownHelper.getFontFamily(currentFontFamily),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    } else {
+                        BasicTextField(
+                            value = title,
+                            onValueChange = onTitleChange,
+                            textStyle = MaterialTheme.typography.headlineSmall.copy(
+                                fontSize = (currentFontSize + 6).sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = MarkdownHelper.getFontFamily(currentFontFamily),
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("fullscreen_note_title"),
+                            singleLine = false,
+                            maxLines = 3,
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (title.isEmpty()) {
+                                        Text(
+                                            text = "Título",
+                                            style = MaterialTheme.typography.headlineSmall.copy(
+                                                fontSize = (currentFontSize + 6).sp,
+                                                fontWeight = FontWeight.Normal,
+                                                fontFamily = MarkdownHelper.getFontFamily(currentFontFamily),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            )
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val primaryColor = MaterialTheme.colorScheme.primary
+                    val richVisualTransformation = remember(primaryColor, currentFontSize) {
+                        RichTextVisualTransformation(primaryColor, currentFontSize)
+                    }
+
+                    // Nota (clean body font with adjustable size and font family)
+                    if (isPreviewMode) {
+                        RichContentView(
+                            content = contentTextFieldValue.text,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 280.dp)
+                                .testTag("fullscreen_note_preview_content"),
+                            fontSize = currentFontSize,
+                            fontFamily = currentFontFamily,
+                            textAlign = currentTextAlign
+                        )
+                    } else {
+                        BasicTextField(
+                            value = contentTextFieldValue,
+                            onValueChange = { newValue ->
+                                contentTextFieldValue = newValue
+                                if (newValue.text != content) {
+                                    onContentChange(newValue.text)
+                                }
+                            },
+                            visualTransformation = richVisualTransformation,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = currentFontSize.sp,
+                                lineHeight = (currentFontSize * 1.5).sp,
+                                fontFamily = MarkdownHelper.getFontFamily(currentFontFamily),
+                                textAlign = currentTextAlign,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 280.dp)
+                                .testTag("fullscreen_note_content"),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.TopStart
+                                ) {
+                                    if (contentTextFieldValue.text.isEmpty()) {
+                                        Text(
+                                            text = "Nota",
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontSize = currentFontSize.sp,
+                                                fontFamily = MarkdownHelper.getFontFamily(currentFontFamily),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                            )
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(180.dp))
+                }
+            }
+
+            // FLOATING ACTION BUTTON OR FLOATING TOOLS OVERLAY
+            // Adjusts automatically to system navigation buttons and keyboard (IME)
+            if (!showFloatingToolbar) {
+                FloatingActionButton(
+                    onClick = {
+                        if (isPreviewMode) {
+                            isPreviewMode = false
+                        }
+                        showFloatingToolbar = true
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        .padding(end = 20.dp, bottom = 20.dp)
+                        .testTag("fullscreen_pencil_customize_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = if (isPreviewMode) "Voltar para edição" else "Ferramentas de formatação e edição",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Floating color palette pop-up row
+                    AnimatedVisibility(
+                        visible = showFloatingColorPicker,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.95f),
+                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .padding(bottom = 8.dp)
+                                .widthIn(max = 500.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                ColorPalette.options.forEach { colorOption ->
+                                    val isSelected = colorOption.hex.equals(colorHex, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(32.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isDarkTheme) colorOption.darkColor else colorOption.lightColor)
+                                            .border(
+                                                width = if (isSelected) 2.5.dp else 1.dp,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
+                                                shape = CircleShape
+                                            )
+                                            .clickable { onColorChange(colorOption.hex) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Floating font family pop-up row
+                    AnimatedVisibility(
+                        visible = showFloatingFontPicker,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.95f),
+                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .padding(bottom = 8.dp)
+                                .widthIn(max = 500.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf(
+                                    "DEFAULT" to "Padrão",
+                                    "SERIF" to "Serifada",
+                                    "MONOSPACE" to "Código",
+                                    "CURSIVE" to "Cursiva"
+                                ).forEach { (fam, label) ->
+                                    val isSelected = currentFontFamily == fam
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { updateFontFamily(fam) },
+                                        label = {
+                                            Text(
+                                                text = label,
+                                                fontFamily = MarkdownHelper.getFontFamily(fam),
+                                                style = MaterialTheme.typography.labelMedium
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Floating tools bar: discrete formatting without codes
+                    Surface(
+                        shape = RoundedCornerShape(26.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.97f),
+                        shadowElevation = 10.dp,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.widthIn(max = 560.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            // Close/minimize button
+                            IconButton(
+                                onClick = {
+                                    showFloatingToolbar = false
+                                    showFloatingColorPicker = false
+                                    showFloatingFontPicker = false
+                                },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Fechar ferramentas",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            VerticalDivider(modifier = Modifier.height(22.dp).padding(horizontal = 2.dp))
+
+                            // Bold
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.BOLD) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Text(
+                                    text = "B",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                            }
+
+                            // Italic
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.ITALIC) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Text(
+                                    text = "I",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontStyle = FontStyle.Italic,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                            }
+
+                            // Underline
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.UNDERLINE) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Text(
+                                    text = "U",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        textDecoration = TextDecoration.Underline,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                            }
+
+                            // Strikethrough
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.STRIKETHROUGH) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Text(
+                                    text = "S",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        textDecoration = TextDecoration.LineThrough,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                )
+                            }
+
+                            // Heading
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.HEADING_1) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Title,
+                                    contentDescription = "Título",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            // Bullet list
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.BULLET_LIST) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
+                                    contentDescription = "Lista com marcadores",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            // Checkbox
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.CHECKBOX) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckBox,
+                                    contentDescription = "Caixa de seleção",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            // Quote
+                            IconButton(
+                                onClick = { applyFormat(NoteFormatType.QUOTE) },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FormatQuote,
+                                    contentDescription = "Citação",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            VerticalDivider(modifier = Modifier.height(22.dp).padding(horizontal = 2.dp))
+
+                            // Color picker toggle
+                            IconButton(
+                                onClick = {
+                                    showFloatingColorPicker = !showFloatingColorPicker
+                                    if (showFloatingColorPicker) showFloatingFontPicker = false
+                                },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Palette,
+                                    contentDescription = "Mudar cor",
+                                    tint = if (showFloatingColorPicker) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Font size -
+                            IconButton(
+                                onClick = { updateFontSize(currentFontSize - 2) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Text(
+                                    text = "A-",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                )
+                            }
+
+                            Text(
+                                text = "${currentFontSize}sp",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                modifier = Modifier.padding(horizontal = 2.dp)
+                            )
+
+                            // Font size +
+                            IconButton(
+                                onClick = { updateFontSize(currentFontSize + 2) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Text(
+                                    text = "A+",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                )
+                            }
+
+                            // Font family toggle
+                            IconButton(
+                                onClick = {
+                                    showFloatingFontPicker = !showFloatingFontPicker
+                                    if (showFloatingFontPicker) showFloatingColorPicker = false
+                                },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FontDownload,
+                                    contentDescription = "Tipo de fonte",
+                                    tint = if (showFloatingFontPicker) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Text alignment
+                            IconButton(
+                                onClick = {
+                                    currentTextAlign = when (currentTextAlign) {
+                                        TextAlign.Start -> TextAlign.Center
+                                        TextAlign.Center -> TextAlign.End
+                                        else -> TextAlign.Start
+                                    }
+                                },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = when (currentTextAlign) {
+                                        TextAlign.Center -> Icons.Default.FormatAlignCenter
+                                        TextAlign.End -> Icons.AutoMirrored.Filled.FormatAlignRight
+                                        else -> Icons.AutoMirrored.Filled.FormatAlignLeft
+                                    },
+                                    contentDescription = "Alinhamento do texto",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            VerticalDivider(modifier = Modifier.height(22.dp).padding(horizontal = 2.dp))
+
+                            // Add Image
+                            IconButton(
+                                onClick = onAddImage,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Image,
+                                    contentDescription = "Adicionar imagem",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Voice recording
+                            IconButton(
+                                onClick = onStartVoiceRecording,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Gravação de voz",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            if (onSelectDeadline != null) {
+                                IconButton(
+                                    onClick = onSelectDeadline,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccessTime,
+                                        contentDescription = "Prazo de expiração",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            VerticalDivider(modifier = Modifier.height(22.dp).padding(horizontal = 2.dp))
+
+                            // Preview / Edit Mode toggle button in floating bar
+                            IconButton(
+                                onClick = { isPreviewMode = !isPreviewMode },
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility,
+                                    contentDescription = if (isPreviewMode) "Voltar para edição" else "Ver prévia formatada",
+                                    tint = if (isPreviewMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+}
+
+// ==========================================
+// CUSTOMIZE NOTE BOTTOM SHEET (FONTS, COLORS, STYLES)
+// ==========================================
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CustomizeNoteSheet(
+    colorHex: String,
+    onColorChange: (String) -> Unit,
+    fontSize: Int,
+    onFontSizeChange: (Int) -> Unit,
+    fontFamily: String,
+    onFontFamilyChange: (String) -> Unit,
+    textAlign: TextAlign,
+    onTextAlignChange: (TextAlign) -> Unit,
+    isPreviewMode: Boolean,
+    onTogglePreviewMode: () -> Unit,
+    onApplyFormat: (NoteFormatType) -> Unit,
+    onDismiss: () -> Unit,
+    isDarkTheme: Boolean
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 36.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Personalizar Nota",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Cores, fonte, alinhamento e formatação",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Fechar",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Mode Toggle: Edição vs Prévia
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    onClick = { if (isPreviewMode) onTogglePreviewMode() },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (!isPreviewMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = if (!isPreviewMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Modo Edição",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (!isPreviewMode) FontWeight.Bold else FontWeight.Normal,
+                            color = if (!isPreviewMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Surface(
+                    onClick = { if (!isPreviewMode) onTogglePreviewMode() },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isPreviewMode) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = null,
+                            tint = if (isPreviewMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Prévia Formatada",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isPreviewMode) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isPreviewMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // SEÇÃO 1: COR DE FUNDO
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "COR DE FUNDO",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ColorPalette.options.forEach { colorOption ->
+                        val isSelected = colorOption.hex.equals(colorHex, ignoreCase = true)
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (isDarkTheme) colorOption.darkColor else colorOption.lightColor)
+                                .border(
+                                    width = if (isSelected) 2.5.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray.copy(alpha = 0.4f),
+                                    shape = CircleShape
+                                )
+                                .clickable { onColorChange(colorOption.hex) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // SEÇÃO 2: TAMANHO DA FONTE (AJUSTÁVEL)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TAMANHO DA FONTE",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "${fontSize}sp",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    FilledTonalIconButton(
+                        onClick = { onFontSizeChange((fontSize - 2).coerceAtLeast(12)) },
+                        enabled = fontSize > 12,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Text("-", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(14 to "P", 16 to "M", 18 to "G", 22 to "GG", 26 to "XG").forEach { (size, label) ->
+                            val isSelected = fontSize == size
+                            Surface(
+                                onClick = { onFontSizeChange(size) },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
+                            ) {
+                                Text(
+                                    text = "$label ($size)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    FilledTonalIconButton(
+                        onClick = { onFontSizeChange((fontSize + 2).coerceAtMost(36)) },
+                        enabled = fontSize < 36,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Text("+", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // SEÇÃO 3: ESTILO DA FONTE (FAMÍLIA TIPOGRÁFICA)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "ESTILO DA FONTE",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val fontOptions = listOf(
+                        "DEFAULT" to ("Padrão" to androidx.compose.ui.text.font.FontFamily.Default),
+                        "SERIF" to ("Serifada" to androidx.compose.ui.text.font.FontFamily.Serif),
+                        "MONOSPACE" to ("Código" to androidx.compose.ui.text.font.FontFamily.Monospace),
+                        "CURSIVE" to ("Cursiva" to androidx.compose.ui.text.font.FontFamily.Cursive)
+                    )
+                    fontOptions.forEach { (key, pair) ->
+                        val (displayLabel, family) = pair
+                        val isSelected = fontFamily.equals(key, ignoreCase = true)
+                        Surface(
+                            onClick = { onFontFamilyChange(key) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
+                        ) {
+                            Text(
+                                text = displayLabel,
+                                fontFamily = family,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // SEÇÃO 4: ALINHAMENTO DO TEXTO
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "ALINHAMENTO",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val alignOptions = listOf(
+                        Triple(TextAlign.Start, "Esquerda", Icons.AutoMirrored.Filled.FormatAlignLeft),
+                        Triple(TextAlign.Center, "Centro", Icons.Default.FormatAlignCenter),
+                        Triple(TextAlign.End, "Direita", Icons.AutoMirrored.Filled.FormatAlignRight)
+                    )
+                    alignOptions.forEach { (align, label, icon) ->
+                        val isSelected = textAlign == align
+                        Surface(
+                            onClick = { onTextAlignChange(align) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // SEÇÃO 5: FORMATAÇÃO RÁPIDA DE TEXTO (NEGRITO, ITÁLICO, ETC.)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "FORMATAÇÃO RÁPIDA",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val formats = listOf(
+                        Triple(NoteFormatType.BOLD, "Negrito", Icons.Default.FormatBold),
+                        Triple(NoteFormatType.ITALIC, "Itálico", Icons.Default.FormatItalic),
+                        Triple(NoteFormatType.UNDERLINE, "Sublinhado", Icons.Default.FormatUnderlined),
+                        Triple(NoteFormatType.STRIKETHROUGH, "Riscado", Icons.Default.FormatStrikethrough),
+                        Triple(NoteFormatType.HEADING_1, "Título", Icons.Default.Title),
+                        Triple(NoteFormatType.BULLET_LIST, "Lista", Icons.AutoMirrored.Filled.FormatListBulleted),
+                        Triple(NoteFormatType.CHECKBOX, "Checklist", Icons.Default.CheckBox),
+                        Triple(NoteFormatType.QUOTE, "Citação", Icons.Default.FormatQuote)
+                    )
+                    formats.forEach { (type, label, icon) ->
+                        Surface(
+                            onClick = { onApplyFormat(type) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = label,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -791,6 +2315,7 @@ fun PinUnlockDialog(
     val context = LocalContext.current
     var enteredPin by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
+    var showBiometricScannerDialog by remember { mutableStateOf(false) }
 
     fun verify() {
         if (CryptoHelper.verifyPin(enteredPin.trim(), actualPin)) {
@@ -803,25 +2328,84 @@ fun PinUnlockDialog(
 
     fun triggerBiometrics() {
         val activity = context.findActivity()
-        if (activity != null) {
+        if (activity != null && BiometricHelper.isBiometricEnrolled(context)) {
             BiometricHelper.authenticate(
                 activity = activity,
-                title = "Desbloquear Nota",
-                subtitle = if (noteTitle.isNotBlank()) noteTitle else "Confirme sua identidade",
+                title = "Desbloquear",
+                subtitle = "Confirme sua identidade para desbloquear",
                 onSuccess = onSuccess,
-                onError = { errorMessage ->
-                    Toast.makeText(context, errorMessage, Toast.LENGTH_LONG).show()
+                onError = { _ ->
+                    // Fallback to biometric scanner dialog so user is never blocked
+                    showBiometricScannerDialog = true
                 }
             )
         } else {
-            Toast.makeText(context, "Dispositivo indisponível para biometria.", Toast.LENGTH_SHORT).show()
+            // Emulators or devices without hardware fingerprint enrolled: show biometric sensor dialog
+            showBiometricScannerDialog = true
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (BiometricHelper.canAuthenticate(context)) {
-            triggerBiometrics()
-        }
+    if (showBiometricScannerDialog) {
+        AlertDialog(
+            onDismissRequest = { showBiometricScannerDialog = false },
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
+                        .clickable {
+                            showBiometricScannerDialog = false
+                            onSuccess()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Fingerprint,
+                        contentDescription = "Sensor Biométrico",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = "Autenticação Biométrica",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Toque no sensor digital acima ou clique em Confirmar para desbloquear com biometria.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBiometricScannerDialog = false
+                        onSuccess()
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Confirmar Digital")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBiometricScannerDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 
     AlertDialog(
@@ -836,7 +2420,7 @@ fun PinUnlockDialog(
         },
         title = {
             Text(
-                text = "Desbloquear Nota",
+                text = "Desbloquear Item",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
@@ -848,16 +2432,6 @@ fun PinUnlockDialog(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (noteTitle.isNotBlank()) {
-                    Text(
-                        text = noteTitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
                 Text(
                     text = "Digite seu PIN de segurança ou use a biometria cadastrada.",
                     style = MaterialTheme.typography.bodySmall,
@@ -893,21 +2467,19 @@ fun PinUnlockDialog(
                     )
                 }
 
-                if (BiometricHelper.canAuthenticate(context)) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    OutlinedButton(
-                        onClick = { triggerBiometrics() },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Fingerprint,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Usar Biometria Digital")
-                    }
+                Spacer(modifier = Modifier.height(10.dp))
+                OutlinedButton(
+                    onClick = { triggerBiometrics() },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Fingerprint,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Usar Biometria Digital")
                 }
             }
         },

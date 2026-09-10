@@ -15,6 +15,8 @@ data class NoteEntity(
     val lockPin: String? = null,
     val imageUri: String? = null,
     val audioPath: String? = null,
+    val fontSize: Int = 16,
+    val fontFamily: String = "DEFAULT",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -26,6 +28,10 @@ data class TaskEntity(
     val text: String,
     val isCompleted: Boolean = false,
     val isPinned: Boolean = false,
+    val isLocked: Boolean = false,
+    val lockPin: String? = null,
+    val recurrence: String = "NONE",
+    val visibleFrom: Long = 0L, // Epoch millis from which task becomes visible (0 = immediately)
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -37,6 +43,10 @@ data class DeadlineTaskEntity(
     val isCompleted: Boolean = false,
     val deadlineTimestamp: Long, // Epoch millis
     val isPinned: Boolean = false,
+    val isLocked: Boolean = false,
+    val lockPin: String? = null,
+    val recurrence: String = "NONE",
+    val visibleFrom: Long = 0L, // Epoch millis from which task becomes visible (0 = immediately)
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -51,7 +61,11 @@ data class DeadlineNoteEntity(
     val isPinned: Boolean = false,
     val isLocked: Boolean = false,
     val lockPin: String? = null,
+    val recurrence: String = "NONE",
+    val visibleFrom: Long = 0L,
     val imageUri: String? = null,
     val audioPath: String? = null,
+    val fontSize: Int = 16,
+    val fontFamily: String = "DEFAULT",
     val createdAt: Long = System.currentTimeMillis()
 )
