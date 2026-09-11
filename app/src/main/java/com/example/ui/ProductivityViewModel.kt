@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.backup.BackupHelper
 import com.example.data.local.AppDatabase
 import com.example.data.local.entity.DeadlineNoteEntity
 import com.example.data.local.entity.DeadlineTaskEntity
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ProductivityViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -560,6 +562,64 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     fun restoreDeadlineNote(note: DeadlineNoteEntity) {
         viewModelScope.launch {
             repository.insertDeadlineNote(note)
+        }
+    }
+
+    // --- Manual Backup & Restore ---
+    fun getBackupJson(): String {
+        return BackupHelper.exportToJson(
+            notes = allNotes.value,
+            tasks = allTasks.value,
+            deadlineTasks = activeDeadlineTasks.value,
+            deadlineNotes = activeDeadlineNotes.value
+        )
+    }
+
+    fun restoreBackupJson(jsonString: String, onResult: (Boolean, Int, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val data = withContext(Dispatchers.Default) {
+                    BackupHelper.importFromJson(jsonString)
+                }
+                var count = 0
+                data.notes.forEach { note ->
+                    repository.insertNote(note.copy(id = 0))
+                    count++
+                }
+                data.tasks.forEach { task ->
+                    repository.insertTask(task.copy(id = 0))
+                    count++
+                }
+                data.deadlineTasks.forEach { dt ->
+                    val newId = repository.insertDeadlineTask(dt.copy(id = 0))
+                    if (!dt.isCompleted && dt.deadlineTimestamp > System.currentTimeMillis()) {
+                        NotificationHelper.scheduleAlarms(
+                            context = getApplication(),
+                            id = newId,
+                            itemType = "TASK",
+                            title = dt.text.take(40),
+                            deadlineTimestamp = dt.deadlineTimestamp
+                        )
+                    }
+                    count++
+                }
+                data.deadlineNotes.forEach { dn ->
+                    val newId = repository.insertDeadlineNote(dn.copy(id = 0))
+                    if (dn.deadlineTimestamp > System.currentTimeMillis()) {
+                        NotificationHelper.scheduleAlarms(
+                            context = getApplication(),
+                            id = newId,
+                            itemType = "NOTE",
+                            title = dn.title.ifBlank { "Nota com Prazo" }.take(40),
+                            deadlineTimestamp = dn.deadlineTimestamp
+                        )
+                    }
+                    count++
+                }
+                onResult(true, count, "Backup restaurado com sucesso! $count itens recuperados.")
+            } catch (e: Exception) {
+                onResult(false, 0, "Falha ao restaurar backup: ${e.localizedMessage ?: "formato inválido"}")
+            }
         }
     }
 }

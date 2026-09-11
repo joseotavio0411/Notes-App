@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -7,25 +8,40 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.HourglassBottom
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.HourglassBottom
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,12 +49,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,7 +68,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -119,6 +141,15 @@ fun MainScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    // Backup and options menu state
+    var showMenu by remember { mutableStateOf(false) }
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showImportDialog by remember { mutableStateOf(false) }
+    var showVersionDialog by remember { mutableStateOf(false) }
+    var importText by remember { mutableStateOf("") }
 
     // Search and filter state
     var searchQuery by remember { mutableStateOf("") }
@@ -237,6 +268,56 @@ fun MainScreen(
                             contentDescription = if (isDarkTheme) "Mudar para Tema Claro" else "Mudar para Tema Escuro",
                             tint = MaterialTheme.colorScheme.primary
                         )
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.testTag("more_options_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Mais opções",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Exportar Backup") },
+                                onClick = {
+                                    showMenu = false
+                                    showExportDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Backup, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Restaurar Backup") },
+                                onClick = {
+                                    showMenu = false
+                                    importText = ""
+                                    showImportDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Restore, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Atualizações e Versão") },
+                                onClick = {
+                                    showMenu = false
+                                    showVersionDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Info, contentDescription = null)
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
@@ -427,6 +508,151 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    if (showExportDialog) {
+        val backupJson = remember { viewModel.getBackupJson() }
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            icon = { Icon(Icons.Default.Backup, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Exportar Backup dos Dados") },
+            text = {
+                Column {
+                    Text(
+                        "Seus dados atuais:\n" +
+                        "• ${notes.size} Notas\n" +
+                        "• ${tasks.size} Tarefas\n" +
+                        "• ${deadlineTasks.size} Tarefas com Prazo\n" +
+                        "• ${deadlineNotes.size} Notas com Prazo\n\n" +
+                        "Você pode compartilhar o backup por WhatsApp, Google Drive, Email ou copiar para a área de transferência.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, backupJson)
+                            putExtra(Intent.EXTRA_SUBJECT, "Backup Produtividade")
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, "Compartilhar Backup")
+                        context.startActivity(shareIntent)
+                        showExportDialog = false
+                    }
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
+                    Text("Compartilhar")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(backupJson))
+                        showExportDialog = false
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Backup copiado para a área de transferência!")
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
+                    Text("Copiar")
+                }
+            }
+        )
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            icon = { Icon(Icons.Default.Restore, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Restaurar Backup") },
+            text = {
+                Column {
+                    Text(
+                        "Cole o código do backup abaixo para restaurar suas notas e tarefas:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = importText,
+                        onValueChange = { importText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(140.dp),
+                        placeholder = { Text("Cole o backup aqui...") },
+                        maxLines = 8
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(
+                            onClick = {
+                                val clip = clipboardManager.getText()?.text
+                                if (!clip.isNullOrBlank()) {
+                                    importText = clip
+                                }
+                            }
+                        ) {
+                            Text("Colar da Área de Transferência")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (importText.isNotBlank()) {
+                            viewModel.restoreBackupJson(importText) { success, count, msg ->
+                                showImportDialog = false
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(msg)
+                                }
+                            }
+                        }
+                    },
+                    enabled = importText.isNotBlank()
+                ) {
+                    Text("Restaurar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (showVersionDialog) {
+        AlertDialog(
+            onDismissRequest = { showVersionDialog = false },
+            icon = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Versão e Atualizações") },
+            text = {
+                Column {
+                    Text(
+                        "Versão 1.1 (build 2)\n\n" +
+                        "✅ Atualização Segura Ativa:\n" +
+                        "Ao passar o novo APK para seu celular, o aplicativo atualiza diretamente por cima da versão existente, sem desinstalar e sem perder notas ou tarefas.\n\n" +
+                        "✅ Banco de Dados Protegido:\n" +
+                        "O sistema de migração de dados preserva todas as suas notas, checklists, áudios e prazos intactos.\n\n" +
+                        "✅ Backup Automático do Sistema:\n" +
+                        "O backup na nuvem (Google Drive) e transferência entre aparelhos já estão configurados.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showVersionDialog = false }) {
+                    Text("Entendido")
+                }
+            }
+        )
     }
 }
 
