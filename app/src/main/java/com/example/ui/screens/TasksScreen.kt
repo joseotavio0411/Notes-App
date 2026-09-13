@@ -10,6 +10,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -82,21 +84,32 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.TaskEntity
+import com.example.data.model.CategoryHelper
+import com.example.data.model.Subtask
+import com.example.data.model.SubtaskHelper
+import com.example.ui.components.CategoryBadge
 import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
+import com.example.ui.components.SubtaskEditorSection
+import com.example.ui.components.TaskSubtasksSection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasksScreen(
     tasks: List<TaskEntity>,
-    onAddTask: (text: String, isPinned: Boolean, recurrence: String) -> Unit,
+    onAddTask: (text: String, isPinned: Boolean, recurrence: String, category: String, subtasksJson: String) -> Unit,
     onToggleTask: (TaskEntity) -> Unit,
     onTogglePinTask: (TaskEntity) -> Unit,
-    onDeleteTask: (TaskEntity) -> Unit
+    onDeleteTask: (TaskEntity) -> Unit,
+    onToggleSubtask: ((TaskEntity, String) -> Unit)? = null,
+    onAddSubtask: ((TaskEntity, String) -> Unit)? = null,
+    onRemoveSubtask: ((TaskEntity, String) -> Unit)? = null
 ) {
     var newTaskText by remember { mutableStateOf("") }
     var newTaskIsPinned by remember { mutableStateOf(false) }
     var newTaskRecurrence by remember { mutableStateOf("NONE") }
+    var newTaskCategory by remember { mutableStateOf("Geral") }
+    var newTaskSubtasks by remember { mutableStateOf<List<Subtask>>(emptyList()) }
     var showAddTaskDialog by remember { mutableStateOf(false) }
     var taskToDelete by remember { mutableStateOf<TaskEntity?>(null) }
 
@@ -108,6 +121,8 @@ fun TasksScreen(
                 newTaskText = ""
                 newTaskIsPinned = false
                 newTaskRecurrence = "NONE"
+                newTaskCategory = "Geral"
+                newTaskSubtasks = emptyList()
             },
             title = {
                 Row(
@@ -148,14 +163,25 @@ fun TasksScreen(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 if (newTaskText.isNotBlank()) {
-                                    onAddTask(newTaskText.trim(), newTaskIsPinned, newTaskRecurrence)
+                                    val subJson = SubtaskHelper.toJson(newTaskSubtasks)
+                                    onAddTask(newTaskText.trim(), newTaskIsPinned, newTaskRecurrence, newTaskCategory, subJson)
                                     newTaskText = ""
                                     newTaskIsPinned = false
                                     newTaskRecurrence = "NONE"
+                                    newTaskCategory = "Geral"
+                                    newTaskSubtasks = emptyList()
                                     showAddTaskDialog = false
                                 }
                             }
                         )
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Subtasks inside create dialog
+                    SubtaskEditorSection(
+                        subtasks = newTaskSubtasks,
+                        onSubtasksChange = { newTaskSubtasks = it }
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -236,10 +262,13 @@ fun TasksScreen(
                 Button(
                     onClick = {
                         if (newTaskText.isNotBlank()) {
-                            onAddTask(newTaskText.trim(), newTaskIsPinned, newTaskRecurrence)
+                            val subJson = SubtaskHelper.toJson(newTaskSubtasks)
+                            onAddTask(newTaskText.trim(), newTaskIsPinned, newTaskRecurrence, newTaskCategory, subJson)
                             newTaskText = ""
                             newTaskIsPinned = false
                             newTaskRecurrence = "NONE"
+                            newTaskCategory = "Geral"
+                            newTaskSubtasks = emptyList()
                             showAddTaskDialog = false
                         }
                     },
@@ -257,6 +286,8 @@ fun TasksScreen(
                         newTaskText = ""
                         newTaskIsPinned = false
                         newTaskRecurrence = "NONE"
+                        newTaskCategory = "Geral"
+                        newTaskSubtasks = emptyList()
                     }
                 ) {
                     Text("Cancelar")
@@ -389,6 +420,9 @@ fun TasksScreen(
                                 onTogglePin = { onTogglePinTask(task) },
                                 onRequestDelete = { taskToDelete = task },
                                 onSwipeDelete = { onDeleteTask(task) },
+                                onToggleSubtask = { subId -> onToggleSubtask?.invoke(task, subId) },
+                                onAddSubtask = { title -> onAddSubtask?.invoke(task, title) },
+                                onRemoveSubtask = { subId -> onRemoveSubtask?.invoke(task, subId) },
                                 modifier = Modifier.animateItem(
                                     fadeInSpec = tween(150),
                                     fadeOutSpec = tween(150),
@@ -420,6 +454,9 @@ fun TasksScreen(
                             onTogglePin = { onTogglePinTask(task) },
                             onRequestDelete = { taskToDelete = task },
                             onSwipeDelete = { onDeleteTask(task) },
+                            onToggleSubtask = { subId -> onToggleSubtask?.invoke(task, subId) },
+                            onAddSubtask = { title -> onAddSubtask?.invoke(task, title) },
+                            onRemoveSubtask = { subId -> onRemoveSubtask?.invoke(task, subId) },
                             modifier = Modifier.animateItem(
                                 fadeInSpec = tween(150),
                                 fadeOutSpec = tween(150),
@@ -463,6 +500,9 @@ fun TaskItemRow(
     onTogglePin: () -> Unit,
     onRequestDelete: () -> Unit,
     onSwipeDelete: () -> Unit,
+    onToggleSubtask: ((String) -> Unit)? = null,
+    onAddSubtask: ((String) -> Unit)? = null,
+    onRemoveSubtask: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -581,98 +621,112 @@ fun TaskItemRow(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
             elevation = CardDefaults.cardElevation(defaultElevation = animatedElevation)
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
-                Checkbox(
-                    checked = task.isCompleted,
-                    onCheckedChange = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onToggle()
-                    },
-                    modifier = Modifier.testTag("task_checkbox_${task.id}"),
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = MaterialTheme.colorScheme.primary
-                    )
-                )
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = task.text,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
-                        ),
-                        color = if (task.isCompleted) {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        }
+                    Checkbox(
+                        checked = task.isCompleted,
+                        onCheckedChange = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggle()
+                        },
+                        modifier = Modifier.testTag("task_checkbox_${task.id}"),
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = MaterialTheme.colorScheme.primary
+                        )
                     )
 
-                    if (task.recurrence != "NONE") {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        Text(
+                            text = task.text,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else TextDecoration.None
+                            ),
+                            color = if (task.isCompleted) {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+
+                        if (task.recurrence != "NONE") {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f))
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Repeat,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = DateTimeHelper.getRecurrenceLabel(task.recurrence),
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Repeat,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = DateTimeHelper.getRecurrenceLabel(task.recurrence),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
                             }
                         }
                     }
+
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onTogglePin()
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics { contentDescription = if (task.isPinned) "Desafixar tarefa" else "Fixar tarefa no topo" }
+                    ) {
+                        Icon(
+                            imageVector = if (task.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                            contentDescription = null,
+                            tint = if (task.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onRequestDelete,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("delete_task_button_${task.id}")
+                            .semantics { contentDescription = "Excluir tarefa" }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
 
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onTogglePin()
-                    },
-                    modifier = Modifier
-                        .size(48.dp)
-                        .semantics { contentDescription = if (task.isPinned) "Desafixar tarefa" else "Fixar tarefa no topo" }
-                ) {
-                    Icon(
-                        imageVector = if (task.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                        contentDescription = null,
-                        tint = if (task.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onRequestDelete,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("delete_task_button_${task.id}")
-                        .semantics { contentDescription = "Excluir tarefa" }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                        modifier = Modifier.size(20.dp)
+                if (!task.subtasksJson.isNullOrBlank() && task.subtasksJson != "[]") {
+                    TaskSubtasksSection(
+                        subtasksJson = task.subtasksJson,
+                        onToggleSubtask = { subId -> onToggleSubtask?.invoke(subId) },
+                        onAddSubtask = { title -> onAddSubtask?.invoke(title) },
+                        onRemoveSubtask = { subId -> onRemoveSubtask?.invoke(subId) },
+                        modifier = Modifier.padding(start = 44.dp, end = 8.dp, bottom = 4.dp)
                     )
                 }
             }

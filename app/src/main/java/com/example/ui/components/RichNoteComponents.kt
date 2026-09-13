@@ -618,6 +618,7 @@ fun VoiceRecordingDialog(
 fun AttachedImageView(
     imageUriOrPath: String,
     modifier: Modifier = Modifier,
+    maxHeight: androidx.compose.ui.unit.Dp = 240.dp,
     onDeleteImage: (() -> Unit)? = null
 ) {
     Box(
@@ -630,7 +631,7 @@ fun AttachedImageView(
             contentDescription = "Imagem da nota",
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 240.dp),
+                .heightIn(max = maxHeight),
             contentScale = ContentScale.Crop
         )
 

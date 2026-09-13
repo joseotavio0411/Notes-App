@@ -19,7 +19,7 @@ import com.example.data.local.entity.TaskEntity
         DeadlineTaskEntity::class,
         DeadlineNoteEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -103,6 +103,54 @@ abstract class AppDatabase : RoomDatabase() {
             if (!dlNotesCols.contains("createdAt")) db.execSQL("ALTER TABLE `deadline_notes` ADD COLUMN `createdAt` INTEGER NOT NULL DEFAULT 0")
         }
 
+        private fun migrateToV6(db: SupportSQLiteDatabase) {
+            migrateToV5(db)
+
+            fun getExistingColumns(tableName: String): Set<String> {
+                val columns = mutableSetOf<String>()
+                val cursor = db.query("PRAGMA table_info(`$tableName`)")
+                try {
+                    val nameIndex = cursor.getColumnIndex("name")
+                    while (cursor.moveToNext()) {
+                        if (nameIndex != -1) {
+                            columns.add(cursor.getString(nameIndex))
+                        }
+                    }
+                } finally {
+                    cursor.close()
+                }
+                return columns
+            }
+
+            val notesCols = getExistingColumns("notes")
+            if (!notesCols.contains("category")) db.execSQL("ALTER TABLE `notes` ADD COLUMN `category` TEXT NOT NULL DEFAULT 'Geral'")
+            if (!notesCols.contains("isDeleted")) db.execSQL("ALTER TABLE `notes` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
+            if (!notesCols.contains("deletedAt")) db.execSQL("ALTER TABLE `notes` ADD COLUMN `deletedAt` INTEGER NOT NULL DEFAULT 0")
+
+            val tasksCols = getExistingColumns("tasks")
+            if (!tasksCols.contains("category")) db.execSQL("ALTER TABLE `tasks` ADD COLUMN `category` TEXT NOT NULL DEFAULT 'Geral'")
+            if (!tasksCols.contains("subtasksJson")) db.execSQL("ALTER TABLE `tasks` ADD COLUMN `subtasksJson` TEXT NOT NULL DEFAULT '[]'")
+            if (!tasksCols.contains("isDeleted")) db.execSQL("ALTER TABLE `tasks` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
+            if (!tasksCols.contains("deletedAt")) db.execSQL("ALTER TABLE `tasks` ADD COLUMN `deletedAt` INTEGER NOT NULL DEFAULT 0")
+
+            val dlTasksCols = getExistingColumns("deadline_tasks")
+            if (!dlTasksCols.contains("category")) db.execSQL("ALTER TABLE `deadline_tasks` ADD COLUMN `category` TEXT NOT NULL DEFAULT 'Geral'")
+            if (!dlTasksCols.contains("subtasksJson")) db.execSQL("ALTER TABLE `deadline_tasks` ADD COLUMN `subtasksJson` TEXT NOT NULL DEFAULT '[]'")
+            if (!dlTasksCols.contains("isDeleted")) db.execSQL("ALTER TABLE `deadline_tasks` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
+            if (!dlTasksCols.contains("deletedAt")) db.execSQL("ALTER TABLE `deadline_tasks` ADD COLUMN `deletedAt` INTEGER NOT NULL DEFAULT 0")
+
+            val dlNotesCols = getExistingColumns("deadline_notes")
+            if (!dlNotesCols.contains("category")) db.execSQL("ALTER TABLE `deadline_notes` ADD COLUMN `category` TEXT NOT NULL DEFAULT 'Geral'")
+            if (!dlNotesCols.contains("isDeleted")) db.execSQL("ALTER TABLE `deadline_notes` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
+            if (!dlNotesCols.contains("deletedAt")) db.execSQL("ALTER TABLE `deadline_notes` ADD COLUMN `deletedAt` INTEGER NOT NULL DEFAULT 0")
+        }
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
+        private val MIGRATION_4_6 = object : Migration(4, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
+        private val MIGRATION_3_6 = object : Migration(3, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
+        private val MIGRATION_2_6 = object : Migration(2, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
+        private val MIGRATION_1_6 = object : Migration(1, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
+
         private val MIGRATION_1_5 = object : Migration(1, 5) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV5(db) }
         private val MIGRATION_2_5 = object : Migration(2, 5) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV5(db) }
         private val MIGRATION_3_5 = object : Migration(3, 5) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV5(db) }
@@ -119,6 +167,11 @@ abstract class AppDatabase : RoomDatabase() {
                     "productivity_database"
                 )
                 .addMigrations(
+                    MIGRATION_5_6,
+                    MIGRATION_4_6,
+                    MIGRATION_3_6,
+                    MIGRATION_2_6,
+                    MIGRATION_1_6,
                     MIGRATION_1_5,
                     MIGRATION_2_5,
                     MIGRATION_3_5,

@@ -2,7 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.ui.graphics.Color
 import com.example.ui.theme.AmethystCardLight
-import com.example.ui.theme.ObsidianSurfaceDark
+import com.example.ui.theme.SlateSurfaceDark
 import com.example.ui.theme.TextPrimaryDark
 import com.example.ui.theme.TextPrimaryLight
 
@@ -15,13 +15,13 @@ data class NoteColor(
 
 object ColorPalette {
     val options = listOf(
-        NoteColor("#FFFFFF", "Padrão", AmethystCardLight, ObsidianSurfaceDark),
-        NoteColor("#F3E8FF", "Ametista", Color(0xFFFAF5FF), Color(0xFF26163F)),
-        NoteColor("#EDE9FE", "Lavanda", Color(0xFFF5F3FF), Color(0xFF1E1338)),
-        NoteColor("#DCFCE7", "Esmeralda", Color(0xFFF0FDF4), Color(0xFF132B1E)),
-        NoteColor("#DBEAFE", "Safira", Color(0xFFEFF6FF), Color(0xFF152243)),
-        NoteColor("#FEF3C7", "Âmbar", Color(0xFFFFFBEB), Color(0xFF332612)),
-        NoteColor("#FCE7F3", "Quartzo", Color(0xFFFDF2F8), Color(0xFF37162C))
+        NoteColor("#FFFFFF", "Padrão", AmethystCardLight, SlateSurfaceDark),
+        NoteColor("#F3E8FF", "Ametista", Color(0xFFFAF5FF), Color(0xFF342B46)),
+        NoteColor("#EDE9FE", "Lavanda", Color(0xFFF5F3FF), Color(0xFF2F2B42)),
+        NoteColor("#DCFCE7", "Esmeralda", Color(0xFFF0FDF4), Color(0xFF26332E)),
+        NoteColor("#DBEAFE", "Safira", Color(0xFFEFF6FF), Color(0xFF262D3E)),
+        NoteColor("#FEF3C7", "Âmbar", Color(0xFFFFFBEB), Color(0xFF373024)),
+        NoteColor("#FCE7F3", "Quartzo", Color(0xFFFDF2F8), Color(0xFF372836))
     )
 
     fun getSurfaceColor(hex: String, isDark: Boolean): Color {
@@ -29,7 +29,7 @@ object ColorPalette {
         return if (found != null) {
             if (isDark) found.darkColor else found.lightColor
         } else {
-            if (isDark) ObsidianSurfaceDark else AmethystCardLight
+            if (isDark) SlateSurfaceDark else AmethystCardLight
         }
     }
 

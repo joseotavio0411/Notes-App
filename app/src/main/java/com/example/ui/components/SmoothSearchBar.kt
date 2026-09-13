@@ -75,11 +75,8 @@ enum class SearchAttachmentFilter(val label: String) {
 fun SmoothSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
-    attachmentFilter: SearchAttachmentFilter,
-    onAttachmentFilterChange: (SearchAttachmentFilter) -> Unit,
-    discoveredTags: List<String>,
     modifier: Modifier = Modifier,
-    placeholder: String = "Pesquisar texto, #tags ou anexos..."
+    placeholder: String = "Pesquisar..."
 ) {
     val focusManager = LocalFocusManager.current
     var isFocused by remember { mutableStateOf(false) }
@@ -230,100 +227,6 @@ fun SmoothSearchBar(
                             )
                     )
                 }
-            }
-        }
-
-        // Filter chips row (All, Photos, Audio, Pinned, and discovered hashtags)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Attachment filter chips
-            SearchAttachmentFilter.entries.forEach { filter ->
-                val isSelected = attachmentFilter == filter
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onAttachmentFilterChange(filter) },
-                    label = {
-                        Text(
-                            text = filter.label,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    leadingIcon = {
-                        when (filter) {
-                            SearchAttachmentFilter.ALL -> Icon(
-                                Icons.Default.ViewList,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            SearchAttachmentFilter.PHOTOS -> Icon(
-                                Icons.Default.Image,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            SearchAttachmentFilter.AUDIO -> Icon(
-                                Icons.Default.Mic,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            SearchAttachmentFilter.PINNED -> Icon(
-                                Icons.Default.PushPin,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    ),
-                    modifier = Modifier.height(32.dp)
-                )
-            }
-
-            // Quick Hashtag chips from user notes/tasks
-            discoveredTags.take(8).forEach { tag ->
-                val tagFormatted = if (tag.startsWith("#")) tag else "#$tag"
-                val isTagInQuery = query.contains(tagFormatted, ignoreCase = true)
-
-                FilterChip(
-                    selected = isTagInQuery,
-                    onClick = {
-                        if (isTagInQuery) {
-                            val newQ = query.replace(tagFormatted, "").trim()
-                            onQueryChange(newQ)
-                        } else {
-                            val newQ = if (query.isBlank()) tagFormatted else "$query $tagFormatted"
-                            onQueryChange(newQ)
-                        }
-                    },
-                    label = {
-                        Text(
-                            text = tagFormatted,
-                            fontSize = 12.sp,
-                            fontWeight = if (isTagInQuery) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Tag,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = if (isTagInQuery) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    ),
-                    modifier = Modifier.height(32.dp)
-                )
             }
         }
     }

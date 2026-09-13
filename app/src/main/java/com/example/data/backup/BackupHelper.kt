@@ -39,6 +39,9 @@ object BackupHelper {
                 put("audioPath", n.audioPath ?: JSONObject.NULL)
                 put("fontSize", n.fontSize)
                 put("fontFamily", n.fontFamily)
+                put("category", n.category)
+                put("isDeleted", n.isDeleted)
+                put("deletedAt", n.deletedAt)
                 put("createdAt", n.createdAt)
                 put("updatedAt", n.updatedAt)
             }
@@ -56,6 +59,10 @@ object BackupHelper {
                 put("lockPin", t.lockPin ?: JSONObject.NULL)
                 put("recurrence", t.recurrence)
                 put("visibleFrom", t.visibleFrom)
+                put("category", t.category)
+                put("subtasksJson", t.subtasksJson)
+                put("isDeleted", t.isDeleted)
+                put("deletedAt", t.deletedAt)
                 put("createdAt", t.createdAt)
             }
             tasksArray.put(obj)
@@ -73,6 +80,10 @@ object BackupHelper {
                 put("lockPin", dt.lockPin ?: JSONObject.NULL)
                 put("recurrence", dt.recurrence)
                 put("visibleFrom", dt.visibleFrom)
+                put("category", dt.category)
+                put("subtasksJson", dt.subtasksJson)
+                put("isDeleted", dt.isDeleted)
+                put("deletedAt", dt.deletedAt)
                 put("createdAt", dt.createdAt)
             }
             dlTasksArray.put(obj)
@@ -95,6 +106,9 @@ object BackupHelper {
                 put("audioPath", dn.audioPath ?: JSONObject.NULL)
                 put("fontSize", dn.fontSize)
                 put("fontFamily", dn.fontFamily)
+                put("category", dn.category)
+                put("isDeleted", dn.isDeleted)
+                put("deletedAt", dn.deletedAt)
                 put("createdAt", dn.createdAt)
             }
             dlNotesArray.put(obj)
@@ -127,6 +141,9 @@ object BackupHelper {
                         audioPath = if (obj.isNull("audioPath")) null else obj.optString("audioPath"),
                         fontSize = obj.optInt("fontSize", 16),
                         fontFamily = obj.optString("fontFamily", "DEFAULT"),
+                        category = obj.optString("category", "Geral"),
+                        isDeleted = obj.optBoolean("isDeleted", false),
+                        deletedAt = obj.optLong("deletedAt", 0L),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
                         updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
                     )
@@ -147,6 +164,10 @@ object BackupHelper {
                         lockPin = if (obj.isNull("lockPin")) null else obj.optString("lockPin"),
                         recurrence = obj.optString("recurrence", "NONE"),
                         visibleFrom = obj.optLong("visibleFrom", 0L),
+                        category = obj.optString("category", "Geral"),
+                        subtasksJson = obj.optString("subtasksJson", "[]"),
+                        isDeleted = obj.optBoolean("isDeleted", false),
+                        deletedAt = obj.optLong("deletedAt", 0L),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
                 )
@@ -167,6 +188,10 @@ object BackupHelper {
                         lockPin = if (obj.isNull("lockPin")) null else obj.optString("lockPin"),
                         recurrence = obj.optString("recurrence", "NONE"),
                         visibleFrom = obj.optLong("visibleFrom", 0L),
+                        category = obj.optString("category", "Geral"),
+                        subtasksJson = obj.optString("subtasksJson", "[]"),
+                        isDeleted = obj.optBoolean("isDeleted", false),
+                        deletedAt = obj.optLong("deletedAt", 0L),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
                 )
@@ -192,6 +217,9 @@ object BackupHelper {
                         audioPath = if (obj.isNull("audioPath")) null else obj.optString("audioPath"),
                         fontSize = obj.optInt("fontSize", 16),
                         fontFamily = obj.optString("fontFamily", "DEFAULT"),
+                        category = obj.optString("category", "Geral"),
+                        isDeleted = obj.optBoolean("isDeleted", false),
+                        deletedAt = obj.optLong("deletedAt", 0L),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis())
                     )
                 )

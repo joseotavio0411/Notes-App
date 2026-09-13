@@ -14,17 +14,25 @@ val AmethystCardLight = Color(0xFFFFFFFF)        // Cartões elevados em branco 
 val AmethystContainerLight = Color(0xFFF3EDFD)   // Pílulas, chips e inputs inativos
 val AmethystBorderLight = Color(0xFFE5DCF9)      // Hairline stroke sutil de 1dp
 
-// --- SUPERFÍCIES DARK (Twilight Obsidian & Ametista Profunda) ---
-val ObsidianVoidDark = Color(0xFF0A0713)         // Fundo da janela (profundo para telas OLED)
-val ObsidianSurfaceDark = Color(0xFF140D24)      // Cards e superfícies de trabalho elevadas
-val ObsidianContainerDark = Color(0xFF1F1438)    // Containers internos e campos de input
-val ObsidianBorderDark = Color(0xFF2E1F52)       // Hairline border translúcida de 1dp
+// --- SUPERFÍCIES DARK (Cinza Grafite/Slate com Roxo) ---
+val SlateBackgroundDark = Color(0xFF1E1D24)      // Fundo principal em cinza grafite elegante (substitui o preto absoluto)
+val SlateSurfaceDark = Color(0xFF282733)         // Cartões e superfícies elevadas em cinza médio refinado
+val SlateContainerDark = Color(0xFF353444)       // Containers internos, inputs e chips inativos
+val SlateBorderDark = Color(0xFF48455A)          // Borda sutil de 1dp em cinza com matiz roxo
+val SlatePrimaryContainerDark = Color(0xFF3F3556)// Container de destaque roxo-acinzentado elegante
+val SlateOnPrimaryContainerDark = Color(0xFFE2D4FD) // Texto e ícones em containers com destaque roxo
+
+// Alias mantidos para compatibilidade
+val ObsidianVoidDark = SlateBackgroundDark
+val ObsidianSurfaceDark = SlateSurfaceDark
+val ObsidianContainerDark = SlateContainerDark
+val ObsidianBorderDark = SlateBorderDark
 
 // --- TIPOGRAFIA DE ALTO CONTRASTE ---
 val TextPrimaryLight = Color(0xFF150A2A)         // Preto enriquecido com matiz violeta profundo
 val TextSecondaryLight = Color(0xFF63567D)       // Cinza ametista para legendas e datas
-val TextPrimaryDark = Color(0xFFFAF8FF)          // Branco perolado suave
-val TextSecondaryDark = Color(0xFFA99BC4)        // Lavanda acinzentado de fácil leitura
+val TextPrimaryDark = Color(0xFFF3F3F7)          // Branco-cinza suave de alta legibilidade sobre cinza
+val TextSecondaryDark = Color(0xFFA8A7B8)        // Cinza neutro suave para legendas e informações secundárias
 
 // --- SEMÂNTICA DE STATUS & PRAZOS (Harmonizados com o Roxo) ---
 val StatusUrgentCrimson = Color(0xFFF43F5E)      // Prazo crítico (< 1h) - Contraste alto com violeta
@@ -41,14 +49,14 @@ val PurplePrimaryContainerLight = AmethystContainerLight
 val PurpleOnPrimaryContainerLight = VioletDeepBase
 
 val PurplePrimaryDark = VioletRoyalDark
-val PurpleOnPrimaryDark = ObsidianVoidDark
-val PurplePrimaryContainerDark = ObsidianContainerDark
-val PurpleOnPrimaryContainerDark = VioletRoyalDark
+val PurpleOnPrimaryDark = SlateBackgroundDark
+val PurplePrimaryContainerDark = SlatePrimaryContainerDark
+val PurpleOnPrimaryContainerDark = SlateOnPrimaryContainerDark
 
 val SurfaceLight = AmethystSurfaceLight
-val SurfaceDark = ObsidianVoidDark
+val SurfaceDark = SlateBackgroundDark
 val CardSurfaceLight = AmethystCardLight
-val CardSurfaceDark = ObsidianSurfaceDark
+val CardSurfaceDark = SlateSurfaceDark
 
 
 

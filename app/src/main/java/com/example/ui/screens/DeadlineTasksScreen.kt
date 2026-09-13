@@ -13,6 +13,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,6 +44,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -87,8 +90,15 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.DeadlineTaskEntity
+import com.example.data.model.CategoryHelper
+import com.example.data.model.Subtask
+import com.example.data.model.SubtaskHelper
+import com.example.ui.components.CategoryBadge
 import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
+import com.example.ui.components.SnoozeDeadlineDialog
+import com.example.ui.components.SubtaskEditorSection
+import com.example.ui.components.TaskSubtasksSection
 import com.example.ui.components.breathingGlow
 import java.util.Calendar
 
@@ -97,10 +107,14 @@ import java.util.Calendar
 fun DeadlineTasksScreen(
     tasks: List<DeadlineTaskEntity>,
     currentTime: Long,
-    onAddTask: (text: String, deadlineMillis: Long, isPinned: Boolean, recurrence: String) -> Unit,
+    onAddTask: (text: String, deadlineMillis: Long, isPinned: Boolean, recurrence: String, category: String, subtasksJson: String) -> Unit,
     onToggleTask: (DeadlineTaskEntity) -> Unit,
     onTogglePinTask: (DeadlineTaskEntity) -> Unit,
     onDeleteTask: (DeadlineTaskEntity) -> Unit,
+    onSnoozeTask: ((DeadlineTaskEntity, Int) -> Unit)? = null,
+    onToggleSubtask: ((DeadlineTaskEntity, String) -> Unit)? = null,
+    onAddSubtask: ((DeadlineTaskEntity, String) -> Unit)? = null,
+    onRemoveSubtask: ((DeadlineTaskEntity, String) -> Unit)? = null,
     isDarkTheme: Boolean
 ) {
     val context = LocalContext.current
@@ -108,9 +122,12 @@ fun DeadlineTasksScreen(
     var selectedDeadlineMillis by remember { mutableStateOf<Long?>(null) }
     var isPinnedInput by remember { mutableStateOf(false) }
     var recurrenceInput by remember { mutableStateOf("NONE") }
+    var categoryInput by remember { mutableStateOf("Geral") }
+    var subtasksInput by remember { mutableStateOf<List<Subtask>>(emptyList()) }
     var showValidationError by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var taskToDelete by remember { mutableStateOf<DeadlineTaskEntity?>(null) }
+    var taskToSnooze by remember { mutableStateOf<DeadlineTaskEntity?>(null) }
 
     // Dialog for adding a new deadline task
     if (showAddDialog) {
@@ -121,6 +138,8 @@ fun DeadlineTasksScreen(
                 selectedDeadlineMillis = null
                 isPinnedInput = false
                 recurrenceInput = "NONE"
+                categoryInput = "Geral"
+                subtasksInput = emptyList()
                 showValidationError = false
             },
             title = {
@@ -259,6 +278,14 @@ fun DeadlineTasksScreen(
                         }
                     }
 
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Subtasks checklist section
+                    SubtaskEditorSection(
+                        subtasks = subtasksInput,
+                        onSubtasksChange = { subtasksInput = it }
+                    )
+
                     if (isPinnedInput) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
@@ -285,11 +312,21 @@ fun DeadlineTasksScreen(
                             showValidationError = true
                             return@Button
                         }
-                        onAddTask(taskText.trim(), selectedDeadlineMillis!!, isPinnedInput, recurrenceInput)
+                        val subtasksJson = SubtaskHelper.toJson(subtasksInput)
+                        onAddTask(
+                            taskText.trim(),
+                            selectedDeadlineMillis!!,
+                            isPinnedInput,
+                            recurrenceInput,
+                            categoryInput,
+                            subtasksJson
+                        )
                         taskText = ""
                         selectedDeadlineMillis = null
                         isPinnedInput = false
                         recurrenceInput = "NONE"
+                        categoryInput = "Geral"
+                        subtasksInput = emptyList()
                         showValidationError = false
                         showAddDialog = false
                     },
@@ -307,6 +344,8 @@ fun DeadlineTasksScreen(
                         selectedDeadlineMillis = null
                         isPinnedInput = false
                         recurrenceInput = "NONE"
+                        categoryInput = "Geral"
+                        subtasksInput = emptyList()
                         showValidationError = false
                     }
                 ) {
@@ -337,6 +376,18 @@ fun DeadlineTasksScreen(
                     Text("Cancelar")
                 }
             }
+        )
+    }
+
+    // Dialog for snoozing/postponing deadline
+    taskToSnooze?.let { task ->
+        SnoozeDeadlineDialog(
+            itemTitle = task.text,
+            onSnoozeMinutes = { minutes ->
+                onSnoozeTask?.invoke(task, minutes)
+                taskToSnooze = null
+            },
+            onDismiss = { taskToSnooze = null }
         )
     }
 
@@ -428,6 +479,10 @@ fun DeadlineTasksScreen(
                                 onTogglePin = { onTogglePinTask(task) },
                                 onRequestDelete = { taskToDelete = task },
                                 onSwipeDelete = { onDeleteTask(task) },
+                                onSnoozeDeadline = { taskToSnooze = task },
+                                onToggleSubtask = { subId -> onToggleSubtask?.invoke(task, subId) },
+                                onAddSubtask = { title -> onAddSubtask?.invoke(task, title) },
+                                onRemoveSubtask = { subId -> onRemoveSubtask?.invoke(task, subId) },
                                 modifier = Modifier.animateItem(
                                     fadeInSpec = tween(150),
                                     fadeOutSpec = tween(150),
@@ -461,6 +516,10 @@ fun DeadlineTasksScreen(
                             onTogglePin = { onTogglePinTask(task) },
                             onRequestDelete = { taskToDelete = task },
                             onSwipeDelete = { onDeleteTask(task) },
+                            onSnoozeDeadline = { taskToSnooze = task },
+                            onToggleSubtask = { subId -> onToggleSubtask?.invoke(task, subId) },
+                            onAddSubtask = { title -> onAddSubtask?.invoke(task, title) },
+                            onRemoveSubtask = { subId -> onRemoveSubtask?.invoke(task, subId) },
                             modifier = Modifier.animateItem(
                                 fadeInSpec = tween(150),
                                 fadeOutSpec = tween(150),
@@ -506,6 +565,10 @@ fun DeadlineTaskItemRow(
     onTogglePin: () -> Unit,
     onRequestDelete: () -> Unit,
     onSwipeDelete: () -> Unit,
+    onSnoozeDeadline: (() -> Unit)? = null,
+    onToggleSubtask: ((String) -> Unit)? = null,
+    onAddSubtask: ((String) -> Unit)? = null,
+    onRemoveSubtask: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val haptic = LocalHapticFeedback.current
@@ -742,6 +805,25 @@ fun DeadlineTaskItemRow(
                         }
                     }
 
+                    if (onSnoozeDeadline != null && !task.isCompleted) {
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onSnoozeDeadline()
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .semantics { contentDescription = "Adiar prazo" }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = "Adiar prazo",
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
                     IconButton(
                         onClick = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -772,6 +854,16 @@ fun DeadlineTaskItemRow(
                             modifier = Modifier.size(20.dp)
                         )
                     }
+                }
+
+                if (!task.subtasksJson.isNullOrBlank() && task.subtasksJson != "[]") {
+                    TaskSubtasksSection(
+                        subtasksJson = task.subtasksJson,
+                        onToggleSubtask = { subId -> onToggleSubtask?.invoke(subId) },
+                        onAddSubtask = { title -> onAddSubtask?.invoke(title) },
+                        onRemoveSubtask = { subId -> onRemoveSubtask?.invoke(subId) },
+                        modifier = Modifier.padding(start = 44.dp, end = 8.dp, top = 4.dp)
+                    )
                 }
             }
         }

@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 
 class ProductivityViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository: ProductivityRepository
+    private val repository = ProductivityRepository(AppDatabase.getDatabase(application).productivityDao())
     private val themePrefs = application.getSharedPreferences("app_theme_prefs", Context.MODE_PRIVATE)
 
     // Current tab index (0: Notes, 1: Tasks, 2: Deadline Tasks, 3: Deadline Notes)
@@ -41,6 +41,10 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         if (themePrefs.contains("is_dark_theme")) themePrefs.getBoolean("is_dark_theme", false) else null
     )
     val isDarkTheme: StateFlow<Boolean?> = _isDarkTheme.asStateFlow()
+
+    // Category filter state ("Todas" or category name)
+    private val _selectedCategory = MutableStateFlow("Todas")
+    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
     // Notes display mode (true = grid, false = list) - persisted across app restarts
     private val _isNotesGridMode = MutableStateFlow(
@@ -57,7 +61,7 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), System.currentTimeMillis())
 
-    // Session-only unlocked note and task IDs (locks again when app process terminates)
+    // Session-only unlocked note and task IDs (locks again when app process terminates or minimizes)
     private val _unlockedNoteIds = MutableStateFlow<Set<Long>>(emptySet())
     val unlockedNoteIds: StateFlow<Set<Long>> = _unlockedNoteIds.asStateFlow()
 
@@ -70,10 +74,29 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     private val _unlockedDeadlineTaskIds = MutableStateFlow<Set<Long>>(emptySet())
     val unlockedDeadlineTaskIds: StateFlow<Set<Long>> = _unlockedDeadlineTaskIds.asStateFlow()
 
-    init {
-        val db = AppDatabase.getDatabase(application)
-        repository = ProductivityRepository(db.productivityDao())
+    // --- Recycle Bin (Lixeira) Flows ---
+    val deletedNotes: StateFlow<List<NoteEntity>> = repository.deletedNotes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val deletedTasks: StateFlow<List<TaskEntity>> = repository.deletedTasks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val deletedDeadlineTasks: StateFlow<List<DeadlineTaskEntity>> = repository.deletedDeadlineTasks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val deletedDeadlineNotes: StateFlow<List<DeadlineNoteEntity>> = repository.deletedDeadlineNotes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val trashTotalCount: StateFlow<Int> = combine(
+        deletedNotes,
+        deletedTasks,
+        deletedDeadlineTasks,
+        deletedDeadlineNotes
+    ) { n, t, dt, dn ->
+        n.size + t.size + dt.size + dn.size
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    init {
         // Initialize deadline notifications channel
         NotificationHelper.initNotificationChannel(application)
 
@@ -90,7 +113,7 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
 
     /**
      * Event-driven purge: executes SQLite batch delete only on actual state events (startup or item changes),
-     * and handles recurring items by renewing their deadline instead of removing them.
+     * handles recurring items, and purges trash older than 30 days.
      */
     fun purgeExpiredItemsOnDemand() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -106,11 +129,26 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
             // and remove non-recurring expired notes
             repository.deleteExpiredCompletedTasks(now)
             repository.deleteExpiredNotes(now)
+
+            // Purge trash items older than 30 days
+            val thirtyDaysAgo = now - 30L * 24L * 60L * 60L * 1000L
+            repository.purgeOldTrash(thirtyDaysAgo)
         }
     }
 
     fun setSelectedTab(tab: Int) {
         _selectedTab.value = tab
+    }
+
+    fun setSelectedCategory(category: String) {
+        _selectedCategory.value = category
+    }
+
+    fun relockAll() {
+        _unlockedNoteIds.value = emptySet()
+        _unlockedDeadlineNoteIds.value = emptySet()
+        _unlockedTaskIds.value = emptySet()
+        _unlockedDeadlineTaskIds.value = emptySet()
     }
 
     fun toggleDarkTheme(currentSystemDark: Boolean) {
@@ -193,7 +231,8 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         imageUri: String? = null,
         audioPath: String? = null,
         fontSize: Int = 16,
-        fontFamily: String = "DEFAULT"
+        fontFamily: String = "DEFAULT",
+        category: String = "Geral"
     ) {
         if (title.isBlank() && content.isBlank() && imageUri.isNullOrBlank() && audioPath.isNullOrBlank()) return
         val securedPin = if (isLocked && !lockPin.isNullOrBlank()) {
@@ -213,6 +252,7 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                     audioPath = audioPath,
                     fontSize = fontSize,
                     fontFamily = fontFamily,
+                    category = category,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )
@@ -247,9 +287,25 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun deleteNote(note: NoteEntity) {
+    fun moveToTrashNote(note: NoteEntity) {
         viewModelScope.launch {
-            repository.deleteNote(note)
+            repository.softDeleteNote(note.id)
+        }
+    }
+
+    fun deleteNote(note: NoteEntity) {
+        moveToTrashNote(note)
+    }
+
+    fun restoreNoteById(id: Long) {
+        viewModelScope.launch {
+            repository.restoreNote(id)
+        }
+    }
+
+    fun deleteNotePermanently(id: Long) {
+        viewModelScope.launch {
+            repository.deleteNoteById(id)
         }
     }
 
@@ -263,7 +319,13 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun addTask(text: String, isPinned: Boolean = false, recurrence: String = "NONE") {
+    fun addTask(
+        text: String,
+        isPinned: Boolean = false,
+        recurrence: String = "NONE",
+        category: String = "Geral",
+        subtasksJson: String = "[]"
+    ) {
         if (text.isBlank()) return
         viewModelScope.launch {
             repository.insertTask(
@@ -273,9 +335,17 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                     isPinned = isPinned,
                     recurrence = recurrence,
                     visibleFrom = 0L,
+                    category = category,
+                    subtasksJson = subtasksJson,
                     createdAt = System.currentTimeMillis()
                 )
             )
+        }
+    }
+
+    fun updateTask(task: TaskEntity) {
+        viewModelScope.launch {
+            repository.updateTask(task)
         }
     }
 
@@ -286,8 +356,6 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
             repository.updateTask(task.copy(isCompleted = willBeCompleted))
 
             if (willBeCompleted && task.recurrence != "NONE") {
-                // When recurring task is completed normally, the new recurrence instance
-                // will only appear at the beginning of the period (e.g. 00:00 of next day/month)
                 val nextPeriodStart = DateTimeHelper.getNextPeriodStart(task.recurrence, now)
                 repository.insertTask(
                     TaskEntity(
@@ -298,11 +366,12 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                         lockPin = task.lockPin,
                         recurrence = task.recurrence,
                         visibleFrom = nextPeriodStart,
+                        category = task.category,
+                        subtasksJson = task.subtasksJson,
                         createdAt = now
                     )
                 )
             } else if (!willBeCompleted && task.recurrence != "NONE") {
-                // If user unchecks the completed task, cancel any pending future task for it
                 repository.deletePendingFutureTasks(task.text, task.recurrence, now)
             }
         }
@@ -314,17 +383,55 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun deleteTask(task: TaskEntity) {
+    fun moveToTrashTask(task: TaskEntity) {
         viewModelScope.launch {
-            repository.deleteTask(task)
+            repository.softDeleteTask(task.id)
         }
     }
 
+    fun deleteTask(task: TaskEntity) {
+        moveToTrashTask(task)
+    }
+
+    fun restoreTaskById(id: Long) {
+        viewModelScope.launch {
+            repository.restoreTask(id)
+        }
+    }
+
+    fun deleteTaskPermanently(id: Long) {
+        viewModelScope.launch {
+            repository.deleteTaskById(id)
+        }
+    }
+
+    // Subtasks for Tasks
+    fun toggleSubtask(task: TaskEntity, subtaskId: String) {
+        val list = com.example.data.model.SubtaskHelper.fromJson(task.subtasksJson).toMutableList()
+        val index = list.indexOfFirst { it.id == subtaskId }
+        if (index != -1) {
+            val current = list[index]
+            list[index] = current.copy(isCompleted = !current.isCompleted)
+            val updatedJson = com.example.data.model.SubtaskHelper.toJson(list)
+            updateTask(task.copy(subtasksJson = updatedJson))
+        }
+    }
+
+    fun addSubtask(task: TaskEntity, subtaskTitle: String) {
+        if (subtaskTitle.isBlank()) return
+        val list = com.example.data.model.SubtaskHelper.fromJson(task.subtasksJson).toMutableList()
+        list.add(com.example.data.model.Subtask(title = subtaskTitle.trim(), isCompleted = false))
+        val updatedJson = com.example.data.model.SubtaskHelper.toJson(list)
+        updateTask(task.copy(subtasksJson = updatedJson))
+    }
+
+    fun removeSubtask(task: TaskEntity, subtaskId: String) {
+        val list = com.example.data.model.SubtaskHelper.fromJson(task.subtasksJson).filter { it.id != subtaskId }
+        val updatedJson = com.example.data.model.SubtaskHelper.toJson(list)
+        updateTask(task.copy(subtasksJson = updatedJson))
+    }
+
     // --- Tab 3: Tarefas Diárias (Com Prazo) ---
-    // Rule:
-    // 1. If not completed and deadline passed -> show in red highlight (stay visible).
-    // 2. If completed and deadline passed -> automatically disappear.
-    // 3. If recurring task is newly scheduled for a future period, only appear when visibleFrom <= now.
     val activeDeadlineTasks: StateFlow<List<DeadlineTaskEntity>> = combine(
         repository.allDeadlineTasks,
         currentTimeMillis
@@ -340,7 +447,9 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         text: String,
         deadlineMillis: Long,
         isPinned: Boolean = false,
-        recurrence: String = "NONE"
+        recurrence: String = "NONE",
+        category: String = "Geral",
+        subtasksJson: String = "[]"
     ) {
         if (text.isBlank() || deadlineMillis <= 0) return
         viewModelScope.launch {
@@ -352,6 +461,8 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                     isPinned = isPinned,
                     recurrence = recurrence,
                     visibleFrom = 0L,
+                    category = category,
+                    subtasksJson = subtasksJson,
                     createdAt = System.currentTimeMillis()
                 )
             )
@@ -363,6 +474,21 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                 deadlineTimestamp = deadlineMillis
             )
             purgeExpiredItemsOnDemand()
+        }
+    }
+
+    fun updateDeadlineTask(task: DeadlineTaskEntity) {
+        viewModelScope.launch {
+            repository.updateDeadlineTask(task)
+            if (!task.isCompleted && task.deadlineTimestamp > System.currentTimeMillis()) {
+                NotificationHelper.scheduleAlarms(
+                    context = getApplication(),
+                    id = task.id,
+                    itemType = "TASK",
+                    title = task.text,
+                    deadlineTimestamp = task.deadlineTimestamp
+                )
+            }
         }
     }
 
@@ -386,8 +512,6 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
             }
 
             if (willBeCompleted && task.recurrence != "NONE") {
-                // 1. Current task is marked as completed normally (stays visible until its deadline passes).
-                // 2. The new task arising from recurrence only appears at the start of the next period (e.g. 00:00).
                 val nextPeriodStart = DateTimeHelper.getNextPeriodStart(task.recurrence, now)
                 var nextDeadline = DateTimeHelper.getNextRecurrence(task.deadlineTimestamp, task.recurrence)
                 while (nextDeadline < nextPeriodStart) {
@@ -403,6 +527,8 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                         lockPin = task.lockPin,
                         recurrence = task.recurrence,
                         visibleFrom = nextPeriodStart,
+                        category = task.category,
+                        subtasksJson = task.subtasksJson,
                         createdAt = now
                     )
                 )
@@ -414,11 +540,9 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                     deadlineTimestamp = nextDeadline
                 )
             } else if (!willBeCompleted && task.recurrence != "NONE") {
-                // If user unchecks the completed task, cancel any pending future task for it
                 repository.deletePendingFutureDeadlineTasks(task.text, task.recurrence, now)
             }
 
-            // If completed task is already expired, purge immediately
             if (updated.isCompleted && updated.deadlineTimestamp < now) {
                 purgeExpiredItemsOnDemand()
             }
@@ -431,16 +555,72 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun deleteDeadlineTask(task: DeadlineTaskEntity) {
+    fun moveToTrashDeadlineTask(task: DeadlineTaskEntity) {
         NotificationHelper.cancelAlarms(getApplication(), task.id, "TASK")
         viewModelScope.launch {
-            repository.deleteDeadlineTask(task)
+            repository.softDeleteDeadlineTask(task.id)
+        }
+    }
+
+    fun deleteDeadlineTask(task: DeadlineTaskEntity) {
+        moveToTrashDeadlineTask(task)
+    }
+
+    fun restoreDeadlineTaskById(id: Long) {
+        viewModelScope.launch {
+            repository.restoreDeadlineTask(id)
+        }
+    }
+
+    fun deleteDeadlineTaskPermanently(id: Long) {
+        viewModelScope.launch {
+            repository.deleteDeadlineTaskById(id)
+        }
+    }
+
+    // Subtasks for Deadline Tasks
+    fun toggleDeadlineSubtask(task: DeadlineTaskEntity, subtaskId: String) {
+        val list = com.example.data.model.SubtaskHelper.fromJson(task.subtasksJson).toMutableList()
+        val index = list.indexOfFirst { it.id == subtaskId }
+        if (index != -1) {
+            val current = list[index]
+            list[index] = current.copy(isCompleted = !current.isCompleted)
+            val updatedJson = com.example.data.model.SubtaskHelper.toJson(list)
+            updateDeadlineTask(task.copy(subtasksJson = updatedJson))
+        }
+    }
+
+    fun addDeadlineSubtask(task: DeadlineTaskEntity, subtaskTitle: String) {
+        if (subtaskTitle.isBlank()) return
+        val list = com.example.data.model.SubtaskHelper.fromJson(task.subtasksJson).toMutableList()
+        list.add(com.example.data.model.Subtask(title = subtaskTitle.trim(), isCompleted = false))
+        val updatedJson = com.example.data.model.SubtaskHelper.toJson(list)
+        updateDeadlineTask(task.copy(subtasksJson = updatedJson))
+    }
+
+    fun removeDeadlineSubtask(task: DeadlineTaskEntity, subtaskId: String) {
+        val list = com.example.data.model.SubtaskHelper.fromJson(task.subtasksJson).filter { it.id != subtaskId }
+        val updatedJson = com.example.data.model.SubtaskHelper.toJson(list)
+        updateDeadlineTask(task.copy(subtasksJson = updatedJson))
+    }
+
+    // Snooze Deadline Task
+    fun snoozeDeadlineTask(task: DeadlineTaskEntity, additionalMinutes: Int) {
+        val newDeadline = System.currentTimeMillis() + (additionalMinutes * 60 * 1000L)
+        viewModelScope.launch {
+            repository.updateDeadlineTask(task.copy(deadlineTimestamp = newDeadline))
+            NotificationHelper.clearTrackerForItem(getApplication(), "TASK", task.id)
+            NotificationHelper.scheduleAlarms(
+                context = getApplication(),
+                id = task.id,
+                itemType = "TASK",
+                title = task.text,
+                deadlineTimestamp = newDeadline
+            )
         }
     }
 
     // --- Tab 4: Notas Diárias (Com Prazo) ---
-    // Rule:
-    // If deadline passed, the note must be deleted/hidden automatically (unless recurring).
     val activeDeadlineNotes: StateFlow<List<DeadlineNoteEntity>> = combine(
         repository.allDeadlineNotes,
         currentTimeMillis
@@ -463,7 +643,8 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         imageUri: String? = null,
         audioPath: String? = null,
         fontSize: Int = 16,
-        fontFamily: String = "DEFAULT"
+        fontFamily: String = "DEFAULT",
+        category: String = "Geral"
     ) {
         if ((title.isBlank() && content.isBlank() && imageUri.isNullOrBlank() && audioPath.isNullOrBlank()) || deadlineMillis <= 0) return
         val securedPin = if (isLocked && !lockPin.isNullOrBlank()) {
@@ -485,6 +666,7 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
                     audioPath = audioPath,
                     fontSize = fontSize,
                     fontFamily = fontFamily,
+                    category = category,
                     createdAt = System.currentTimeMillis()
                 )
             )
@@ -533,10 +715,49 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    fun deleteDeadlineNote(note: DeadlineNoteEntity) {
+    fun moveToTrashDeadlineNote(note: DeadlineNoteEntity) {
         NotificationHelper.cancelAlarms(getApplication(), note.id, "NOTE")
         viewModelScope.launch {
-            repository.deleteDeadlineNote(note)
+            repository.softDeleteDeadlineNote(note.id)
+        }
+    }
+
+    fun deleteDeadlineNote(note: DeadlineNoteEntity) {
+        moveToTrashDeadlineNote(note)
+    }
+
+    fun restoreDeadlineNoteById(id: Long) {
+        viewModelScope.launch {
+            repository.restoreDeadlineNote(id)
+        }
+    }
+
+    fun deleteDeadlineNotePermanently(id: Long) {
+        viewModelScope.launch {
+            repository.deleteDeadlineNoteById(id)
+        }
+    }
+
+    // Snooze Deadline Note
+    fun snoozeDeadlineNote(note: DeadlineNoteEntity, additionalMinutes: Int) {
+        val newDeadline = System.currentTimeMillis() + (additionalMinutes * 60 * 1000L)
+        viewModelScope.launch {
+            repository.updateDeadlineNote(note.copy(deadlineTimestamp = newDeadline))
+            NotificationHelper.clearTrackerForItem(getApplication(), "NOTE", note.id)
+            NotificationHelper.scheduleAlarms(
+                context = getApplication(),
+                id = note.id,
+                itemType = "NOTE",
+                title = note.title.ifBlank { note.content.take(30) },
+                deadlineTimestamp = newDeadline
+            )
+        }
+    }
+
+    // Empty entire trash
+    fun emptyAllTrash() {
+        viewModelScope.launch {
+            repository.emptyAllTrash()
         }
     }
 

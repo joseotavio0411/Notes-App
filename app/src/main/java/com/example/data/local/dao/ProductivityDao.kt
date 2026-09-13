@@ -15,8 +15,17 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ProductivityDao {
     // --- Notas normais ---
-    @Query("SELECT * FROM notes ORDER BY isPinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 ORDER BY isPinned DESC, updatedAt DESC")
     fun getAllNotes(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedNotes(): Flow<List<NoteEntity>>
+
+    @Query("UPDATE notes SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
+    suspend fun softDeleteNote(id: Long, deletedAt: Long)
+
+    @Query("UPDATE notes SET isDeleted = 0, deletedAt = 0 WHERE id = :id")
+    suspend fun restoreNote(id: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertNote(note: NoteEntity): Long
@@ -30,9 +39,21 @@ interface ProductivityDao {
     @Query("DELETE FROM notes WHERE id = :id")
     suspend fun deleteNoteById(id: Long)
 
+    @Query("DELETE FROM notes WHERE isDeleted = 1")
+    suspend fun emptyNotesTrash()
+
     // --- Tarefas normais ---
-    @Query("SELECT * FROM tasks ORDER BY isPinned DESC, isCompleted ASC, createdAt DESC")
+    @Query("SELECT * FROM tasks WHERE isDeleted = 0 ORDER BY isPinned DESC, isCompleted ASC, createdAt DESC")
     fun getAllTasks(): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedTasks(): Flow<List<TaskEntity>>
+
+    @Query("UPDATE tasks SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
+    suspend fun softDeleteTask(id: Long, deletedAt: Long)
+
+    @Query("UPDATE tasks SET isDeleted = 0, deletedAt = 0 WHERE id = :id")
+    suspend fun restoreTask(id: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: TaskEntity): Long
@@ -46,12 +67,24 @@ interface ProductivityDao {
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun deleteTaskById(id: Long)
 
+    @Query("DELETE FROM tasks WHERE isDeleted = 1")
+    suspend fun emptyTasksTrash()
+
     @Query("DELETE FROM tasks WHERE text = :text AND recurrence = :recurrence AND visibleFrom > :currentTime AND isCompleted = 0")
     suspend fun deletePendingFutureTasks(text: String, recurrence: String, currentTime: Long)
 
     // --- Tarefas com Prazo ---
-    @Query("SELECT * FROM deadline_tasks ORDER BY isPinned DESC, deadlineTimestamp ASC")
+    @Query("SELECT * FROM deadline_tasks WHERE isDeleted = 0 ORDER BY isPinned DESC, deadlineTimestamp ASC")
     fun getAllDeadlineTasks(): Flow<List<DeadlineTaskEntity>>
+
+    @Query("SELECT * FROM deadline_tasks WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedDeadlineTasks(): Flow<List<DeadlineTaskEntity>>
+
+    @Query("UPDATE deadline_tasks SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
+    suspend fun softDeleteDeadlineTask(id: Long, deletedAt: Long)
+
+    @Query("UPDATE deadline_tasks SET isDeleted = 0, deletedAt = 0 WHERE id = :id")
+    suspend fun restoreDeadlineTask(id: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDeadlineTask(task: DeadlineTaskEntity): Long
@@ -65,6 +98,9 @@ interface ProductivityDao {
     @Query("DELETE FROM deadline_tasks WHERE id = :id")
     suspend fun deleteDeadlineTaskById(id: Long)
 
+    @Query("DELETE FROM deadline_tasks WHERE isDeleted = 1")
+    suspend fun emptyDeadlineTasksTrash()
+
     @Query("DELETE FROM deadline_tasks WHERE text = :text AND recurrence = :recurrence AND visibleFrom > :currentTime AND isCompleted = 0")
     suspend fun deletePendingFutureDeadlineTasks(text: String, recurrence: String, currentTime: Long)
 
@@ -75,8 +111,17 @@ interface ProductivityDao {
     suspend fun getExpiredCompletedRecurringDeadlineTasks(currentTime: Long): List<DeadlineTaskEntity>
 
     // --- Notas com Prazo ---
-    @Query("SELECT * FROM deadline_notes ORDER BY isPinned DESC, deadlineTimestamp ASC")
+    @Query("SELECT * FROM deadline_notes WHERE isDeleted = 0 ORDER BY isPinned DESC, deadlineTimestamp ASC")
     fun getAllDeadlineNotes(): Flow<List<DeadlineNoteEntity>>
+
+    @Query("SELECT * FROM deadline_notes WHERE isDeleted = 1 ORDER BY deletedAt DESC")
+    fun getDeletedDeadlineNotes(): Flow<List<DeadlineNoteEntity>>
+
+    @Query("UPDATE deadline_notes SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
+    suspend fun softDeleteDeadlineNote(id: Long, deletedAt: Long)
+
+    @Query("UPDATE deadline_notes SET isDeleted = 0, deletedAt = 0 WHERE id = :id")
+    suspend fun restoreDeadlineNote(id: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDeadlineNote(note: DeadlineNoteEntity): Long
@@ -89,6 +134,21 @@ interface ProductivityDao {
 
     @Query("DELETE FROM deadline_notes WHERE id = :id")
     suspend fun deleteDeadlineNoteById(id: Long)
+
+    @Query("DELETE FROM deadline_notes WHERE isDeleted = 1")
+    suspend fun emptyDeadlineNotesTrash()
+
+    @Query("DELETE FROM notes WHERE isDeleted = 1 AND deletedAt < :purgeThreshold")
+    suspend fun purgeOldDeletedNotes(purgeThreshold: Long)
+
+    @Query("DELETE FROM tasks WHERE isDeleted = 1 AND deletedAt < :purgeThreshold")
+    suspend fun purgeOldDeletedTasks(purgeThreshold: Long)
+
+    @Query("DELETE FROM deadline_tasks WHERE isDeleted = 1 AND deletedAt < :purgeThreshold")
+    suspend fun purgeOldDeletedDeadlineTasks(purgeThreshold: Long)
+
+    @Query("DELETE FROM deadline_notes WHERE isDeleted = 1 AND deletedAt < :purgeThreshold")
+    suspend fun purgeOldDeletedDeadlineNotes(purgeThreshold: Long)
 
     @Query("DELETE FROM deadline_notes WHERE deadlineTimestamp < :currentTime AND (recurrence = 'NONE' OR recurrence IS NULL)")
     suspend fun deleteExpiredDeadlineNotes(currentTime: Long)

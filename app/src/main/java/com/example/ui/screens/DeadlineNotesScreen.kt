@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +62,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -101,8 +103,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import com.example.data.local.entity.DeadlineNoteEntity
+import com.example.data.model.CategoryHelper
 import com.example.ui.components.AttachedImageView
 import com.example.ui.components.AudioPlayerView
+import com.example.ui.components.CategoryBadge
 import com.example.ui.components.ColorPalette
 import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
@@ -112,6 +116,7 @@ import com.example.ui.components.NoteCustomizationToolbar
 import com.example.ui.components.PinUnlockDialog
 import com.example.ui.components.RichContentView
 import com.example.ui.components.SetPinDialog
+import com.example.ui.components.SnoozeDeadlineDialog
 import com.example.ui.components.VoiceRecordingDialog
 import com.example.ui.components.breathingGlow
 import com.example.ui.components.copyUriToAppStorage
@@ -121,7 +126,7 @@ import java.util.Calendar
 fun DeadlineNotesScreen(
     notes: List<DeadlineNoteEntity>,
     currentTime: Long,
-    onAddNote: (title: String, content: String, deadlineMillis: Long, colorHex: String, isPinned: Boolean, isLocked: Boolean, lockPin: String?, recurrence: String, imageUri: String?, audioPath: String?) -> Unit,
+    onAddNote: (title: String, content: String, deadlineMillis: Long, colorHex: String, isPinned: Boolean, isLocked: Boolean, lockPin: String?, recurrence: String, imageUri: String?, audioPath: String?, category: String) -> Unit,
     onUpdateNote: (DeadlineNoteEntity) -> Unit,
     onDeleteNote: (DeadlineNoteEntity) -> Unit,
     onTogglePinNote: (DeadlineNoteEntity) -> Unit,
@@ -129,13 +134,15 @@ fun DeadlineNotesScreen(
     unlockedNoteIds: Set<Long>,
     onUnlockNote: (noteId: Long, enteredPin: String, actualPin: String?) -> Boolean,
     isDarkTheme: Boolean,
-    onUnlockNoteDirectly: ((Long) -> Unit)? = null
+    onUnlockNoteDirectly: ((Long) -> Unit)? = null,
+    onSnoozeNote: ((DeadlineNoteEntity, Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var showAddDeadlineNoteDialog by remember { mutableStateOf(false) }
     var noteToUnlock by remember { mutableStateOf<DeadlineNoteEntity?>(null) }
     var noteToEdit by remember { mutableStateOf<DeadlineNoteEntity?>(null) }
     var noteToDelete by remember { mutableStateOf<DeadlineNoteEntity?>(null) }
+    var noteToSnooze by remember { mutableStateOf<DeadlineNoteEntity?>(null) }
     var startInFullscreen by remember { mutableStateOf(false) }
     var pendingFullscreenOpen by remember { mutableStateOf(false) }
 
@@ -144,10 +151,21 @@ fun DeadlineNotesScreen(
             currentTime = currentTime,
             isDarkTheme = isDarkTheme,
             onDismiss = { showAddDeadlineNoteDialog = false },
-            onSave = { title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath ->
-                onAddNote(title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath)
+            onSave = { title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath, category ->
+                onAddNote(title, content, deadlineMillis, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath, category)
                 showAddDeadlineNoteDialog = false
             }
+        )
+    }
+
+    noteToSnooze?.let { note ->
+        SnoozeDeadlineDialog(
+            itemTitle = note.title.ifBlank { "Nota com prazo" },
+            onSnoozeMinutes = { minutes ->
+                onSnoozeNote?.invoke(note, minutes)
+                noteToSnooze = null
+            },
+            onDismiss = { noteToSnooze = null }
         )
     }
 
@@ -251,6 +269,7 @@ fun DeadlineNotesScreen(
                             currentTime = currentTime,
                             isDarkTheme = isDarkTheme,
                             isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
+                            isGrid = true,
                             onUnlock = {
                                 pendingFullscreenOpen = false
                                 noteToUnlock = note
@@ -275,7 +294,8 @@ fun DeadlineNotesScreen(
                                     noteToEdit = note
                                 }
                             },
-                            onDelete = { noteToDelete = note }
+                            onDelete = { noteToDelete = note },
+                            onSnooze = { noteToSnooze = note }
                         )
                     }
 
@@ -298,6 +318,7 @@ fun DeadlineNotesScreen(
                         currentTime = currentTime,
                         isDarkTheme = isDarkTheme,
                         isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
+                        isGrid = true,
                         onUnlock = {
                             pendingFullscreenOpen = false
                             noteToUnlock = note
@@ -322,7 +343,8 @@ fun DeadlineNotesScreen(
                                 noteToEdit = note
                             }
                         },
-                        onDelete = { noteToDelete = note }
+                        onDelete = { noteToDelete = note },
+                        onSnooze = { noteToSnooze = note }
                     )
                 }
             }
@@ -401,12 +423,14 @@ fun DeadlineNoteCard(
     currentTime: Long,
     isDarkTheme: Boolean,
     isUnlocked: Boolean,
+    isGrid: Boolean = false,
     onUnlock: () -> Unit,
     onTogglePin: () -> Unit,
     onToggleCheckbox: (Int) -> Unit,
     onEdit: () -> Unit,
     onOpenFullscreen: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onSnooze: (() -> Unit)? = null
 ) {
     val textColor = ColorPalette.getOptimalTextColor(note.colorHex, isDarkTheme)
     val secondaryTextColor = textColor.copy(alpha = 0.75f)
@@ -418,7 +442,7 @@ fun DeadlineNoteCard(
             .breathingGlow(isCritical = isCritical)
             .clickable { onEdit() }
             .testTag("deadline_note_card_${note.id}"),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(if (isGrid) 12.dp else 14.dp),
         colors = CardDefaults.cardColors(
             containerColor = ColorPalette.getSurfaceColor(note.colorHex, isDarkTheme)
         ),
@@ -433,13 +457,14 @@ fun DeadlineNoteCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp)
+                    .padding(if (isGrid) 8.dp else 12.dp)
             ) {
                 // Attached Image
                 note.imageUri?.let { imgPath ->
                     AttachedImageView(
                         imageUriOrPath = imgPath,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        maxHeight = if (isGrid) 100.dp else 240.dp,
+                        modifier = Modifier.padding(bottom = if (isGrid) 4.dp else 8.dp)
                     )
                 }
 
@@ -447,7 +472,7 @@ fun DeadlineNoteCard(
                 note.audioPath?.let { audioPath ->
                     AudioPlayerView(
                         audioPath = audioPath,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = if (isGrid) 4.dp else 8.dp)
                     )
                 }
 
@@ -455,29 +480,30 @@ fun DeadlineNoteCard(
                 FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        .padding(bottom = if (isGrid) 4.dp else 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Surface(
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            modifier = Modifier.padding(horizontal = if (isGrid) 6.dp else 8.dp, vertical = if (isGrid) 2.dp else 3.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AccessTime,
                                 contentDescription = null,
-                                modifier = Modifier.size(12.dp),
+                                modifier = Modifier.size(if (isGrid) 11.dp else 12.dp),
                                 tint = MaterialTheme.colorScheme.onPrimaryContainer
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
                                 text = DateTimeHelper.getTimeRemainingDescription(note.deadlineTimestamp, currentTime),
                                 style = MaterialTheme.typography.labelSmall,
+                                fontSize = if (isGrid) 10.sp else 11.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
@@ -487,23 +513,24 @@ fun DeadlineNoteCard(
                     if (note.recurrence != "NONE") {
                         Surface(
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                modifier = Modifier.padding(horizontal = if (isGrid) 6.dp else 8.dp, vertical = if (isGrid) 2.dp else 3.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Repeat,
                                     contentDescription = null,
-                                    modifier = Modifier.size(12.dp),
+                                    modifier = Modifier.size(if (isGrid) 11.dp else 12.dp),
                                     tint = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Text(
                                     text = DateTimeHelper.getRecurrenceLabel(note.recurrence),
                                     style = MaterialTheme.typography.labelSmall,
+                                    fontSize = if (isGrid) 10.sp else 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
@@ -520,9 +547,10 @@ fun DeadlineNoteCard(
                     if (note.title.isNotBlank()) {
                         Text(
                             text = note.title,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            style = if (isGrid) MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                else MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = textColor,
-                            maxLines = 2,
+                            maxLines = if (isGrid) 1 else 2,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
@@ -537,64 +565,78 @@ fun DeadlineNoteCard(
                                 contentDescription = "Protegida",
                                 tint = textColor.copy(alpha = 0.85f),
                                 modifier = Modifier
-                                    .size(18.dp)
-                                    .padding(end = 4.dp)
+                                    .size(if (isGrid) 14.dp else 18.dp)
+                                    .padding(end = 2.dp)
                             )
                         }
 
                         IconButton(
                             onClick = onTogglePin,
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(if (isGrid) 28.dp else 40.dp)
                         ) {
                             Icon(
                                 imageVector = if (note.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
                                 contentDescription = if (note.isPinned) "Desafixar" else "Fixar nota",
                                 tint = if (note.isPinned) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.6f),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(if (isGrid) 15.dp else 18.dp)
                             )
                         }
                     }
                 }
 
                 if (note.title.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(if (isGrid) 2.dp else 4.dp))
                 }
 
                 if (note.content.isNotBlank()) {
                     RichContentView(
                         content = note.content,
-                        maxLines = 6,
+                        maxLines = if (isGrid) 3 else 6,
                         onToggleCheckbox = onToggleCheckbox
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(if (isGrid) 4.dp else 8.dp))
                 }
 
-                // Footer with full screen and delete actions
+                // Footer with full screen, snooze and delete actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    onSnooze?.let { snoozeAction ->
+                        IconButton(
+                            onClick = snoozeAction,
+                            modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = "Adiar prazo",
+                                modifier = Modifier.size(if (isGrid) 15.dp else 18.dp),
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                    }
+
                     IconButton(
                         onClick = onOpenFullscreen,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Fullscreen,
                             contentDescription = "Abrir nota em tela cheia",
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(if (isGrid) 16.dp else 20.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
 
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Excluir Nota",
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(if (isGrid) 15.dp else 18.dp),
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
@@ -1072,13 +1114,15 @@ fun CreateDeadlineNoteDialog(
         lockPin: String?,
         recurrence: String,
         imageUri: String?,
-        audioPath: String?
+        audioPath: String?,
+        category: String
     ) -> Unit
 ) {
     val context = LocalContext.current
 
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("Geral") }
     var colorHex by remember { mutableStateOf("#FFFFFF") }
     var deadlineTimestamp by remember { mutableStateOf(currentTime + 24 * 60 * 60 * 1000L) }
     var isPinned by remember { mutableStateOf(false) }
@@ -1126,7 +1170,8 @@ fun CreateDeadlineNoteDialog(
                 if (isLocked) lockPin else null,
                 recurrence,
                 imageUri,
-                audioPath
+                audioPath,
+                category
             )
         }
     }
@@ -1533,7 +1578,8 @@ fun CreateDeadlineNoteDialog(
                             if (isLocked) lockPin else null,
                             recurrence,
                             imageUri,
-                            audioPath
+                            audioPath,
+                            category
                         )
                     }
                 },

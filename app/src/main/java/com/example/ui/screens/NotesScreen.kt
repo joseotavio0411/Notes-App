@@ -12,6 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -54,6 +55,7 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Palette
@@ -67,6 +69,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -98,8 +101,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import com.example.data.local.entity.NoteEntity
+import com.example.data.model.CategoryHelper
 import com.example.ui.components.AttachedImageView
 import com.example.ui.components.AudioPlayerView
+import com.example.ui.components.CategoryBadge
 import com.example.ui.components.ColorPalette
 import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
@@ -110,6 +115,7 @@ import com.example.ui.components.PinUnlockDialog
 import com.example.ui.components.RichContentView
 import com.example.ui.components.SetPinDialog
 import com.example.ui.components.VoiceRecordingDialog
+import com.example.ui.components.ZenReadingDialog
 import com.example.ui.components.copyUriToAppStorage
 
 @Composable
@@ -117,7 +123,7 @@ fun NotesScreen(
     notes: List<NoteEntity>,
     isGridMode: Boolean,
     onToggleGridMode: () -> Unit,
-    onAddNote: (title: String, content: String, colorHex: String, isPinned: Boolean, isLocked: Boolean, lockPin: String?, imageUri: String?, audioPath: String?) -> Unit,
+    onAddNote: (title: String, content: String, colorHex: String, isPinned: Boolean, isLocked: Boolean, lockPin: String?, imageUri: String?, audioPath: String?, category: String) -> Unit,
     onUpdateNote: (NoteEntity) -> Unit,
     onDeleteNote: (NoteEntity) -> Unit,
     onTogglePinNote: (NoteEntity) -> Unit,
@@ -133,16 +139,27 @@ fun NotesScreen(
     var noteToUnlock by remember { mutableStateOf<NoteEntity?>(null) }
     var noteToEdit by remember { mutableStateOf<NoteEntity?>(null) }
     var noteToDelete by remember { mutableStateOf<NoteEntity?>(null) }
+    var noteForZenReading by remember { mutableStateOf<NoteEntity?>(null) }
     var startInFullscreen by remember { mutableStateOf(false) }
     var pendingFullscreenOpen by remember { mutableStateOf(false) }
+
+    // Zen reading dialog
+    noteForZenReading?.let { zNote ->
+        ZenReadingDialog(
+            title = zNote.title,
+            content = zNote.content,
+            category = zNote.category,
+            onDismiss = { noteForZenReading = null }
+        )
+    }
 
     // Dialog for creating a new note
     if (showAddNoteDialog) {
         CreateNoteDialog(
             isDarkTheme = isDarkTheme,
             onDismiss = { showAddNoteDialog = false },
-            onSave = { title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath ->
-                onAddNote(title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath)
+            onSave = { title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath, category ->
+                onAddNote(title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath, category)
                 showAddNoteDialog = false
             }
         )
@@ -253,6 +270,7 @@ fun NotesScreen(
                                 note = note,
                                 isDarkTheme = isDarkTheme,
                                 isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
+                                isGrid = true,
                                 onUnlock = {
                                     pendingFullscreenOpen = false
                                     noteToUnlock = note
@@ -277,6 +295,7 @@ fun NotesScreen(
                                         noteToEdit = note
                                     }
                                 },
+                                onOpenZenReading = { noteForZenReading = note },
                                 onDelete = { noteToDelete = note }
                             )
                         }
@@ -299,6 +318,7 @@ fun NotesScreen(
                             note = note,
                             isDarkTheme = isDarkTheme,
                             isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
+                            isGrid = true,
                             onUnlock = {
                                 pendingFullscreenOpen = false
                                 noteToUnlock = note
@@ -323,6 +343,7 @@ fun NotesScreen(
                                     noteToEdit = note
                                 }
                             },
+                            onOpenZenReading = { noteForZenReading = note },
                             onDelete = { noteToDelete = note }
                         )
                     }
@@ -384,6 +405,7 @@ fun NotesScreen(
                                         noteToEdit = note
                                     }
                                 },
+                                onOpenZenReading = { noteForZenReading = note },
                                 onDelete = { noteToDelete = note }
                             )
                         }
@@ -430,6 +452,7 @@ fun NotesScreen(
                                     noteToEdit = note
                                 }
                             },
+                            onOpenZenReading = { noteForZenReading = note },
                             onDelete = { noteToDelete = note }
                         )
                     }
@@ -507,11 +530,13 @@ fun NoteCard(
     note: NoteEntity,
     isDarkTheme: Boolean,
     isUnlocked: Boolean,
+    isGrid: Boolean = false,
     onUnlock: () -> Unit,
     onTogglePin: () -> Unit,
     onToggleCheckbox: (Int) -> Unit,
     onEdit: () -> Unit,
     onOpenFullscreen: () -> Unit,
+    onOpenZenReading: () -> Unit,
     onDelete: () -> Unit
 ) {
     val textColor = ColorPalette.getOptimalTextColor(note.colorHex, isDarkTheme)
@@ -522,7 +547,7 @@ fun NoteCard(
             .fillMaxWidth()
             .clickable { onEdit() }
             .testTag("note_card_${note.id}"),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(if (isGrid) 12.dp else 14.dp),
         colors = CardDefaults.cardColors(
             containerColor = ColorPalette.getSurfaceColor(note.colorHex, isDarkTheme)
         ),
@@ -537,13 +562,14 @@ fun NoteCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp)
+                    .padding(if (isGrid) 8.dp else 12.dp)
             ) {
                 // Attached Image
                 note.imageUri?.let { imgPath ->
                     AttachedImageView(
                         imageUriOrPath = imgPath,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        maxHeight = if (isGrid) 100.dp else 240.dp,
+                        modifier = Modifier.padding(bottom = if (isGrid) 4.dp else 8.dp)
                     )
                 }
 
@@ -551,7 +577,7 @@ fun NoteCard(
                 note.audioPath?.let { audioPath ->
                     AudioPlayerView(
                         audioPath = audioPath,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                        modifier = Modifier.padding(bottom = if (isGrid) 4.dp else 8.dp)
                     )
                 }
 
@@ -564,9 +590,10 @@ fun NoteCard(
                     if (note.title.isNotBlank()) {
                         Text(
                             text = note.title,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            style = if (isGrid) MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                                else MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                             color = textColor,
-                            maxLines = 2,
+                            maxLines = if (isGrid) 1 else 2,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
@@ -581,65 +608,77 @@ fun NoteCard(
                                 contentDescription = "Protegida com senha",
                                 tint = textColor.copy(alpha = 0.85f),
                                 modifier = Modifier
-                                    .size(18.dp)
-                                    .padding(end = 4.dp)
+                                    .size(if (isGrid) 14.dp else 18.dp)
+                                    .padding(end = 2.dp)
                             )
                         }
 
                         IconButton(
                             onClick = onTogglePin,
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(if (isGrid) 28.dp else 40.dp)
                         ) {
                             Icon(
                                 imageVector = if (note.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
                                 contentDescription = if (note.isPinned) "Desafixar" else "Fixar nota",
                                 tint = if (note.isPinned) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.6f),
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(if (isGrid) 15.dp else 18.dp)
                             )
                         }
                     }
                 }
 
                 if (note.title.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(if (isGrid) 2.dp else 4.dp))
                 }
 
                 // Rich content with interactive checklists
                 if (note.content.isNotBlank()) {
                     RichContentView(
                         content = note.content,
-                        maxLines = 8,
+                        maxLines = if (isGrid) 3 else 8,
                         onToggleCheckbox = onToggleCheckbox
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(if (isGrid) 4.dp else 8.dp))
                 }
 
-                // Footer with full screen and delete actions
+                // Footer with zen mode, full screen and delete actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
+                        onClick = onOpenZenReading,
+                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MenuBook,
+                            contentDescription = "Modo Zen de Leitura",
+                            modifier = Modifier.size(if (isGrid) 16.dp else 19.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    IconButton(
                         onClick = onOpenFullscreen,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Fullscreen,
                             contentDescription = "Abrir nota em tela cheia",
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(if (isGrid) 16.dp else 20.dp),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
 
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Excluir Nota",
-                            modifier = Modifier.size(18.dp),
+                            modifier = Modifier.size(if (isGrid) 15.dp else 18.dp),
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
@@ -673,6 +712,7 @@ fun EditNoteDialog(
 
     var isRecordingVoice by remember { mutableStateOf(false) }
     var showSetPinDialog by remember { mutableStateOf(false) }
+    var category by remember { mutableStateOf(note.category) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -728,6 +768,7 @@ fun EditNoteDialog(
                 lockPin = if (isLocked) lockPin else null,
                 imageUri = imageUri,
                 audioPath = audioPath,
+                category = category,
                 fontSize = fontSize,
                 fontFamily = fontFamily,
                 updatedAt = System.currentTimeMillis()
@@ -978,7 +1019,8 @@ fun CreateNoteDialog(
         isLocked: Boolean,
         lockPin: String?,
         imageUri: String?,
-        audioPath: String?
+        audioPath: String?,
+        category: String
     ) -> Unit
 ) {
     val context = LocalContext.current
@@ -987,6 +1029,7 @@ fun CreateNoteDialog(
     var title by remember { mutableStateOf("") }
     var content by remember { mutableStateOf("") }
     var colorHex by remember { mutableStateOf("#FFFFFF") }
+    var category by remember { mutableStateOf("Geral") }
     var isPinned by remember { mutableStateOf(false) }
     var isLocked by remember { mutableStateOf(false) }
     var lockPin by remember { mutableStateOf<String?>("1234") }
@@ -1049,7 +1092,8 @@ fun CreateNoteDialog(
                 isLocked,
                 if (isLocked) lockPin else null,
                 imageUri,
-                audioPath
+                audioPath,
+                category
             )
         }
     }

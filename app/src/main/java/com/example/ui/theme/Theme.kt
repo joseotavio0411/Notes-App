@@ -13,18 +13,19 @@ import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
     primary = VioletRoyalDark,
-    onPrimary = ObsidianVoidDark,
-    primaryContainer = ObsidianContainerDark,
-    onPrimaryContainer = VioletRoyalDark,
+    onPrimary = Color(0xFF1E1D24),
+    primaryContainer = SlatePrimaryContainerDark,
+    onPrimaryContainer = SlateOnPrimaryContainerDark,
     secondary = VioletNeon,
-    onSecondary = ObsidianVoidDark,
-    background = ObsidianVoidDark,
-    surface = ObsidianSurfaceDark,
-    surfaceVariant = ObsidianContainerDark,
+    onSecondary = Color(0xFF1E1D24),
+    background = SlateBackgroundDark,
+    surface = SlateSurfaceDark,
+    surfaceVariant = SlateContainerDark,
     onBackground = TextPrimaryDark,
     onSurface = TextPrimaryDark,
     onSurfaceVariant = TextSecondaryDark,
-    outline = ObsidianBorderDark,
+    outline = SlateBorderDark,
+    outlineVariant = Color(0xFF3D3A4E),
     error = StatusUrgentCrimson
 )
 

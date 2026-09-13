@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
@@ -26,10 +28,12 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Share
@@ -38,6 +42,8 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.HourglassBottom
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.DropdownMenu
@@ -78,9 +84,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.ProductivityViewModel
+import com.example.ui.components.RecycleBinDialog
 import com.example.ui.components.SearchAttachmentFilter
 import com.example.ui.components.SmoothSearchBar
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 data class TabItem(
     val title: String,
@@ -121,6 +129,13 @@ val navigationTabs = listOf(
     )
 )
 
+private fun isSameDay(t1: Long, t2: Long): Boolean {
+    val cal1 = Calendar.getInstance().apply { timeInMillis = t1 }
+    val cal2 = Calendar.getInstance().apply { timeInMillis = t2 }
+    return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
+           cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -139,21 +154,28 @@ fun MainScreen(
     val unlockedNoteIds by viewModel.unlockedNoteIds.collectAsStateWithLifecycle()
     val unlockedDeadlineNoteIds by viewModel.unlockedDeadlineNoteIds.collectAsStateWithLifecycle()
 
+    // Trash state
+    val deletedNotes by viewModel.deletedNotes.collectAsStateWithLifecycle()
+    val deletedTasks by viewModel.deletedTasks.collectAsStateWithLifecycle()
+    val deletedDeadlineTasks by viewModel.deletedDeadlineTasks.collectAsStateWithLifecycle()
+    val deletedDeadlineNotes by viewModel.deletedDeadlineNotes.collectAsStateWithLifecycle()
+    val trashTotalCount by viewModel.trashTotalCount.collectAsStateWithLifecycle()
+
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
-    // Backup and options menu state
+    // Dialog state
     var showMenu by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
+    var showRecycleBinDialog by remember { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
 
     // Search and filter state
     var searchQuery by remember { mutableStateOf("") }
-    var attachmentFilter by remember { mutableStateOf(SearchAttachmentFilter.ALL) }
 
     // Discovered tags extraction across notes and tasks
     val hashtagRegex = remember { Regex("""#\w+""") }
@@ -179,61 +201,66 @@ fun MainScreen(
         tags.toList()
     }
 
-    // Instant filtered lists
-    val filteredNotes = remember(notes, searchQuery, attachmentFilter) {
-        notes.filter { note ->
-            val matchesQuery = searchQuery.isBlank() ||
-                note.title.contains(searchQuery, ignoreCase = true) ||
+    // Instant filtered lists matching search query
+    val filteredNotes = remember(notes, searchQuery) {
+        if (searchQuery.isBlank()) notes
+        else notes.filter { note ->
+            note.title.contains(searchQuery, ignoreCase = true) ||
                 note.content.contains(searchQuery, ignoreCase = true)
-            val matchesAttachment = when (attachmentFilter) {
-                SearchAttachmentFilter.ALL -> true
-                SearchAttachmentFilter.PHOTOS -> !note.imageUri.isNullOrBlank()
-                SearchAttachmentFilter.AUDIO -> !note.audioPath.isNullOrBlank()
-                SearchAttachmentFilter.PINNED -> note.isPinned
-            }
-            matchesQuery && matchesAttachment
         }
     }
 
-    val filteredTasks = remember(tasks, searchQuery, attachmentFilter) {
-        tasks.filter { task ->
-            val matchesQuery = searchQuery.isBlank() || task.text.contains(searchQuery, ignoreCase = true)
-            val matchesAttachment = when (attachmentFilter) {
-                SearchAttachmentFilter.ALL -> true
-                SearchAttachmentFilter.PHOTOS -> false
-                SearchAttachmentFilter.AUDIO -> false
-                SearchAttachmentFilter.PINNED -> task.isPinned
-            }
-            matchesQuery && matchesAttachment
+    val filteredTasks = remember(tasks, searchQuery) {
+        if (searchQuery.isBlank()) tasks
+        else tasks.filter { task ->
+            task.text.contains(searchQuery, ignoreCase = true)
         }
     }
 
-    val filteredDeadlineTasks = remember(deadlineTasks, searchQuery, attachmentFilter) {
-        deadlineTasks.filter { task ->
-            val matchesQuery = searchQuery.isBlank() || task.text.contains(searchQuery, ignoreCase = true)
-            val matchesAttachment = when (attachmentFilter) {
-                SearchAttachmentFilter.ALL -> true
-                SearchAttachmentFilter.PHOTOS -> false
-                SearchAttachmentFilter.AUDIO -> false
-                SearchAttachmentFilter.PINNED -> task.isPinned
-            }
-            matchesQuery && matchesAttachment
+    val filteredDeadlineTasks = remember(deadlineTasks, searchQuery) {
+        if (searchQuery.isBlank()) deadlineTasks
+        else deadlineTasks.filter { task ->
+            task.text.contains(searchQuery, ignoreCase = true)
         }
     }
 
-    val filteredDeadlineNotes = remember(deadlineNotes, searchQuery, attachmentFilter) {
-        deadlineNotes.filter { note ->
-            val matchesQuery = searchQuery.isBlank() ||
-                note.title.contains(searchQuery, ignoreCase = true) ||
+    val filteredDeadlineNotes = remember(deadlineNotes, searchQuery) {
+        if (searchQuery.isBlank()) deadlineNotes
+        else deadlineNotes.filter { note ->
+            note.title.contains(searchQuery, ignoreCase = true) ||
                 note.content.contains(searchQuery, ignoreCase = true)
-            val matchesAttachment = when (attachmentFilter) {
-                SearchAttachmentFilter.ALL -> true
-                SearchAttachmentFilter.PHOTOS -> !note.imageUri.isNullOrBlank()
-                SearchAttachmentFilter.AUDIO -> !note.audioPath.isNullOrBlank()
-                SearchAttachmentFilter.PINNED -> note.isPinned
-            }
-            matchesQuery && matchesAttachment
         }
+    }
+
+    // Daily summary calculations
+    val pendingTasksCount = remember(tasks) { tasks.count { !it.isCompleted } }
+    val dueTodayDeadlinesCount = remember(deadlineTasks, deadlineNotes, currentTime) {
+        deadlineTasks.count { !it.isCompleted && isSameDay(it.deadlineTimestamp, currentTime) } +
+            deadlineNotes.count { isSameDay(it.deadlineTimestamp, currentTime) }
+    }
+    val overdueDeadlinesCount = remember(deadlineTasks, deadlineNotes, currentTime) {
+        deadlineTasks.count { !it.isCompleted && it.deadlineTimestamp < currentTime } +
+            deadlineNotes.count { it.deadlineTimestamp < currentTime }
+    }
+
+    // Recycle bin dialog
+    if (showRecycleBinDialog) {
+        RecycleBinDialog(
+            deletedNotes = deletedNotes,
+            deletedTasks = deletedTasks,
+            deletedDeadlineTasks = deletedDeadlineTasks,
+            deletedDeadlineNotes = deletedDeadlineNotes,
+            onRestoreNote = { viewModel.restoreNoteById(it) },
+            onDeleteNotePermanently = { viewModel.deleteNotePermanently(it) },
+            onRestoreTask = { viewModel.restoreTaskById(it) },
+            onDeleteTaskPermanently = { viewModel.deleteTaskPermanently(it) },
+            onRestoreDeadlineTask = { viewModel.restoreDeadlineTaskById(it) },
+            onDeleteDeadlineTaskPermanently = { viewModel.deleteDeadlineTaskPermanently(it) },
+            onRestoreDeadlineNote = { viewModel.restoreDeadlineNoteById(it) },
+            onDeleteDeadlineNotePermanently = { viewModel.deleteDeadlineNotePermanently(it) },
+            onEmptyAllTrash = { viewModel.emptyAllTrash() },
+            onDismiss = { showRecycleBinDialog = false }
+        )
     }
 
     Scaffold(
@@ -259,6 +286,49 @@ fun MainScreen(
                     }
                 },
                 actions = {
+                    // Recycle Bin button with item count badge
+                    IconButton(
+                        onClick = { showRecycleBinDialog = true },
+                        modifier = Modifier.testTag("recycle_bin_top_button")
+                    ) {
+                        if (trashTotalCount > 0) {
+                            BadgedBox(
+                                badge = {
+                                    Badge {
+                                        Text(if (trashTotalCount > 99) "99+" else trashTotalCount.toString())
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Lixeira",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Lixeira",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Quick Auto-Lock button
+                    IconButton(
+                        onClick = {
+                            viewModel.relockAll()
+                            Toast.makeText(context, "Itens protegidos bloqueados", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.testTag("auto_lock_top_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Bloquear itens protegidos",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     IconButton(
                         onClick = onToggleDarkTheme,
                         modifier = Modifier.testTag("theme_toggle_button")
@@ -286,6 +356,27 @@ fun MainScreen(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
+                            DropdownMenuItem(
+                                text = { Text("Lixeira ($trashTotalCount)") },
+                                onClick = {
+                                    showMenu = false
+                                    showRecycleBinDialog = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Delete, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Bloquear Itens Protegidos") },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.relockAll()
+                                    Toast.makeText(context, "Itens bloqueados", Toast.LENGTH_SHORT).show()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Lock, contentDescription = null)
+                                }
+                            )
                             DropdownMenuItem(
                                 text = { Text("Exportar Backup") },
                                 onClick = {
@@ -378,9 +469,7 @@ fun MainScreen(
                     SmoothSearchBar(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },
-                        attachmentFilter = attachmentFilter,
-                        onAttachmentFilterChange = { attachmentFilter = it },
-                        discoveredTags = discoveredTags
+                        placeholder = "Pesquisar notas e tarefas..."
                     )
 
                     AnimatedContent(
@@ -404,8 +493,8 @@ fun MainScreen(
                                 notes = filteredNotes,
                                 isGridMode = isNotesGridMode,
                                 onToggleGridMode = { viewModel.toggleNotesGridMode() },
-                                onAddNote = { title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath ->
-                                    viewModel.addNote(title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath)
+                                onAddNote = { title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath, category ->
+                                    viewModel.addNote(title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath, category = category)
                                 },
                                 onUpdateNote = { note -> viewModel.updateNote(note) },
                                 onDeleteNote = { note ->
@@ -414,12 +503,12 @@ fun MainScreen(
                                         snackbarHostState.currentSnackbarData?.dismiss()
                                         val label = if (note.title.isNotBlank()) note.title else "Nota"
                                         val result = snackbarHostState.showSnackbar(
-                                            message = "\"${label.take(24)}\" excluída",
+                                            message = "\"${label.take(24)}\" movida para a lixeira",
                                             actionLabel = "Desfazer",
                                             duration = SnackbarDuration.Short
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
-                                            viewModel.restoreNote(note)
+                                            viewModel.restoreNoteById(note.id)
                                         }
                                     }
                                 },
@@ -432,7 +521,9 @@ fun MainScreen(
                             )
                             1 -> TasksScreen(
                                 tasks = filteredTasks,
-                                onAddTask = { text, isPinned, recurrence -> viewModel.addTask(text, isPinned, recurrence) },
+                                onAddTask = { text, isPinned, recurrence, category, subtasksJson ->
+                                    viewModel.addTask(text, isPinned, recurrence, category = category, subtasksJson = subtasksJson)
+                                },
                                 onToggleTask = { task -> viewModel.toggleTaskCompletion(task) },
                                 onTogglePinTask = { task -> viewModel.togglePinTask(task) },
                                 onDeleteTask = { task ->
@@ -440,21 +531,24 @@ fun MainScreen(
                                     coroutineScope.launch {
                                         snackbarHostState.currentSnackbarData?.dismiss()
                                         val result = snackbarHostState.showSnackbar(
-                                            message = "Tarefa \"${task.text.take(24)}\" excluída",
+                                            message = "Tarefa \"${task.text.take(24)}\" movida para a lixeira",
                                             actionLabel = "Desfazer",
                                             duration = SnackbarDuration.Short
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
-                                            viewModel.restoreTask(task)
+                                            viewModel.restoreTaskById(task.id)
                                         }
                                     }
-                                }
+                                },
+                                onToggleSubtask = { task, subId -> viewModel.toggleSubtask(task, subId) },
+                                onAddSubtask = { task, title -> viewModel.addSubtask(task, title) },
+                                onRemoveSubtask = { task, subId -> viewModel.removeSubtask(task, subId) }
                             )
                             2 -> DeadlineTasksScreen(
                                 tasks = filteredDeadlineTasks,
                                 currentTime = currentTime,
-                                onAddTask = { text, deadline, isPinned, recurrence ->
-                                    viewModel.addDeadlineTask(text, deadline, isPinned, recurrence)
+                                onAddTask = { text, deadline, isPinned, recurrence, category, subtasksJson ->
+                                    viewModel.addDeadlineTask(text, deadline, isPinned, recurrence, category = category, subtasksJson = subtasksJson)
                                 },
                                 onToggleTask = { task -> viewModel.toggleDeadlineTaskCompletion(task) },
                                 onTogglePinTask = { task -> viewModel.togglePinDeadlineTask(task) },
@@ -463,22 +557,26 @@ fun MainScreen(
                                     coroutineScope.launch {
                                         snackbarHostState.currentSnackbarData?.dismiss()
                                         val result = snackbarHostState.showSnackbar(
-                                            message = "Tarefa com prazo excluída",
+                                            message = "Tarefa com prazo movida para a lixeira",
                                             actionLabel = "Desfazer",
                                             duration = SnackbarDuration.Short
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
-                                            viewModel.restoreDeadlineTask(task)
+                                            viewModel.restoreDeadlineTaskById(task.id)
                                         }
                                     }
                                 },
+                                onSnoozeTask = { task, minutes -> viewModel.snoozeDeadlineTask(task, minutes) },
+                                onToggleSubtask = { task, subId -> viewModel.toggleDeadlineSubtask(task, subId) },
+                                onAddSubtask = { task, title -> viewModel.addDeadlineSubtask(task, title) },
+                                onRemoveSubtask = { task, subId -> viewModel.removeDeadlineSubtask(task, subId) },
                                 isDarkTheme = isDarkTheme
                             )
                             3 -> DeadlineNotesScreen(
                                 notes = filteredDeadlineNotes,
                                 currentTime = currentTime,
-                                onAddNote = { title, content, deadline, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath ->
-                                    viewModel.addDeadlineNote(title, content, deadline, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath)
+                                onAddNote = { title, content, deadline, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath, category ->
+                                    viewModel.addDeadlineNote(title, content, deadline, colorHex, isPinned, isLocked, lockPin, recurrence, imageUri, audioPath, category = category)
                                 },
                                 onUpdateNote = { note -> viewModel.updateDeadlineNote(note) },
                                 onDeleteNote = { note ->
@@ -487,17 +585,18 @@ fun MainScreen(
                                         snackbarHostState.currentSnackbarData?.dismiss()
                                         val label = if (note.title.isNotBlank()) note.title else "Nota com prazo"
                                         val result = snackbarHostState.showSnackbar(
-                                            message = "\"${label.take(24)}\" excluída",
+                                            message = "\"${label.take(24)}\" movida para a lixeira",
                                             actionLabel = "Desfazer",
                                             duration = SnackbarDuration.Short
                                         )
                                         if (result == SnackbarResult.ActionPerformed) {
-                                            viewModel.restoreDeadlineNote(note)
+                                            viewModel.restoreDeadlineNoteById(note.id)
                                         }
                                     }
                                 },
                                 onTogglePinNote = { note -> viewModel.togglePinDeadlineNote(note) },
                                 onToggleChecklistItem = { note, lineIdx -> viewModel.toggleDeadlineNoteChecklistItem(note, lineIdx) },
+                                onSnoozeNote = { note, minutes -> viewModel.snoozeDeadlineNote(note, minutes) },
                                 unlockedNoteIds = unlockedDeadlineNoteIds,
                                 onUnlockNote = { noteId, enteredPin, actualPin -> viewModel.unlockDeadlineNote(noteId, enteredPin, actualPin) },
                                 onUnlockNoteDirectly = { noteId -> viewModel.unlockDeadlineNoteDirectly(noteId) },
@@ -519,46 +618,57 @@ fun MainScreen(
             text = {
                 Column {
                     Text(
-                        "Seus dados atuais:\n" +
-                        "• ${notes.size} Notas\n" +
-                        "• ${tasks.size} Tarefas\n" +
-                        "• ${deadlineTasks.size} Tarefas com Prazo\n" +
-                        "• ${deadlineNotes.size} Notas com Prazo\n\n" +
-                        "Você pode compartilhar o backup por WhatsApp, Google Drive, Email ou copiar para a área de transferência.",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "Copie o texto abaixo ou toque em \"Compartilhar\" para salvar em seu celular, WhatsApp, Drive ou e-mail:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = backupJson,
+                        onValueChange = {},
+                        readOnly = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .testTag("backup_export_textfield"),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
                     )
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val sendIntent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            putExtra(Intent.EXTRA_TEXT, backupJson)
-                            putExtra(Intent.EXTRA_SUBJECT, "Backup Produtividade")
-                            type = "text/plain"
-                        }
-                        val shareIntent = Intent.createChooser(sendIntent, "Compartilhar Backup")
-                        context.startActivity(shareIntent)
-                        showExportDialog = false
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(backupJson))
+                            Toast.makeText(context, "Backup copiado para a área de transferência!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.testTag("copy_backup_button")
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Copiar")
                     }
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
-                    Text("Compartilhar")
+                    Button(
+                        onClick = {
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, backupJson)
+                                putExtra(Intent.EXTRA_SUBJECT, "Backup Minhas Notas e Tarefas")
+                                type = "text/plain"
+                            }
+                            context.startActivity(Intent.createChooser(sendIntent, "Salvar backup em:"))
+                        },
+                        modifier = Modifier.testTag("share_backup_button")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Compartilhar")
+                    }
                 }
             },
             dismissButton = {
-                OutlinedButton(
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(backupJson))
-                        showExportDialog = false
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Backup copiado para a área de transferência!")
-                        }
-                    }
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.padding(end = 4.dp))
-                    Text("Copiar")
+                TextButton(onClick = { showExportDialog = false }) {
+                    Text("Fechar")
                 }
             }
         )
@@ -572,52 +682,40 @@ fun MainScreen(
             text = {
                 Column {
                     Text(
-                        "Cole o código do backup abaixo para restaurar suas notas e tarefas:",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "Cole o código do backup (JSON) que você salvou anteriormente:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = importText,
                         onValueChange = { importText = it },
+                        placeholder = { Text("Cole o JSON de backup aqui...") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp),
-                        placeholder = { Text("Cole o backup aqui...") },
-                        maxLines = 8
+                            .height(180.dp)
+                            .testTag("backup_import_textfield"),
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(
-                            onClick = {
-                                val clip = clipboardManager.getText()?.text
-                                if (!clip.isNullOrBlank()) {
-                                    importText = clip
-                                }
-                            }
-                        ) {
-                            Text("Colar da Área de Transferência")
-                        }
-                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (importText.isNotBlank()) {
-                            viewModel.restoreBackupJson(importText) { success, count, msg ->
+                        if (importText.isBlank()) {
+                            Toast.makeText(context, "Por favor, cole o código do backup.", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        viewModel.restoreBackupJson(importText.trim()) { success, count, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            if (success) {
                                 showImportDialog = false
-                                coroutineScope.launch {
-                                    snackbarHostState.showSnackbar(msg)
-                                }
                             }
                         }
                     },
-                    enabled = importText.isNotBlank()
+                    modifier = Modifier.testTag("confirm_restore_backup_button")
                 ) {
-                    Text("Restaurar")
+                    Text("Restaurar Dados")
                 }
             },
             dismissButton = {
@@ -634,25 +732,32 @@ fun MainScreen(
             icon = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
             title = { Text("Versão e Atualizações") },
             text = {
-                Column {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Versão 1.1 (build 2)\n\n" +
-                        "✅ Atualização Segura Ativa:\n" +
-                        "Ao passar o novo APK para seu celular, o aplicativo atualiza diretamente por cima da versão existente, sem desinstalar e sem perder notas ou tarefas.\n\n" +
-                        "✅ Banco de Dados Protegido:\n" +
-                        "O sistema de migração de dados preserva todas as suas notas, checklists, áudios e prazos intactos.\n\n" +
-                        "✅ Backup Automático do Sistema:\n" +
-                        "O backup na nuvem (Google Drive) e transferência entre aparelhos já estão configurados.",
+                        text = "Versão Atual: v6.0 (Com Lixeira, Subtarefas e Categorias)",
+                        fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "✨ Novidades desta versão:\n" +
+                               "• Lixeira com retenção de 30 dias e restauração completa\n" +
+                               "• Subtarefas com progresso e checklist dentro das tarefas\n" +
+                               "• Categorias coloridas e filtro por tags\n" +
+                               "• Adiar prazos (Snooze) e resumo diário\n" +
+                               "• Modo Leitura Zen para notas longas\n" +
+                               "• Migração de banco de dados automática sem perda de dados",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             },
             confirmButton = {
-                Button(onClick = { showVersionDialog = false }) {
+                TextButton(onClick = { showVersionDialog = false }) {
                     Text("Entendido")
                 }
             }
         )
     }
 }
+
 
