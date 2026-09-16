@@ -3,6 +3,9 @@ package com.example.ui.screens
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -73,6 +76,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -86,6 +90,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.ProductivityViewModel
 import com.example.ui.components.RecycleBinDialog
 import com.example.ui.components.SearchAttachmentFilter
+import com.example.ui.components.Skiper26CircularRevealOverlay
+import com.example.ui.components.Skiper26ThemeToggle
 import com.example.ui.components.SmoothSearchBar
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -173,6 +179,11 @@ fun MainScreen(
     var showVersionDialog by remember { mutableStateOf(false) }
     var showRecycleBinDialog by remember { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
+
+    // Skiper26 circular reveal view transition animation state
+    var isThemeRevealing by remember { mutableStateOf(false) }
+    var themeRevealOrigin by remember { mutableStateOf(Offset.Zero) }
+    val themeRevealProgress = remember { Animatable(0f) }
 
     // Search and filter state
     var searchQuery by remember { mutableStateOf("") }
@@ -263,9 +274,10 @@ fun MainScreen(
         )
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -329,16 +341,23 @@ fun MainScreen(
                         )
                     }
 
-                    IconButton(
-                        onClick = onToggleDarkTheme,
-                        modifier = Modifier.testTag("theme_toggle_button")
-                    ) {
-                        Icon(
-                            imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
-                            contentDescription = if (isDarkTheme) "Mudar para Tema Claro" else "Mudar para Tema Escuro",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    // Skiper26 animated theme toggle button with morphing sun/moon & spring physics
+                    Skiper26ThemeToggle(
+                        isDarkTheme = isDarkTheme,
+                        onToggle = { origin ->
+                            themeRevealOrigin = origin
+                            onToggleDarkTheme()
+                            coroutineScope.launch {
+                                isThemeRevealing = true
+                                themeRevealProgress.snapTo(0f)
+                                themeRevealProgress.animateTo(
+                                    targetValue = 1f,
+                                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+                                )
+                                isThemeRevealing = false
+                            }
+                        }
+                    )
 
                     Box {
                         IconButton(
@@ -608,6 +627,15 @@ fun MainScreen(
             }
         }
     }
+
+    // Skiper26 Circular Reveal View Transition Overlay
+    Skiper26CircularRevealOverlay(
+        isRevealing = isThemeRevealing,
+        origin = themeRevealOrigin,
+        progressProvider = { themeRevealProgress.value },
+        targetIsDark = isDarkTheme
+    )
+}
 
     if (showExportDialog) {
         val backupJson = remember { viewModel.getBackupJson() }
