@@ -115,7 +115,8 @@ fun DeadlineTasksScreen(
     onToggleSubtask: ((DeadlineTaskEntity, String) -> Unit)? = null,
     onAddSubtask: ((DeadlineTaskEntity, String) -> Unit)? = null,
     onRemoveSubtask: ((DeadlineTaskEntity, String) -> Unit)? = null,
-    isDarkTheme: Boolean
+    isDarkTheme: Boolean,
+    onOpenRecurrenceManager: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var taskText by remember { mutableStateOf("") }
@@ -408,12 +409,37 @@ fun DeadlineTasksScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Tarefas com Prazo (${tasks.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Tarefas com Prazo (${tasks.size})",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    onOpenRecurrenceManager?.let { openRecurrences ->
+                        Surface(
+                            onClick = openRecurrences,
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("deadline_tasks_recurrence_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Schedule,
+                                    contentDescription = "Gerenciar Recorrências",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
 
                 if (overdueCount > 0) {
                     Surface(

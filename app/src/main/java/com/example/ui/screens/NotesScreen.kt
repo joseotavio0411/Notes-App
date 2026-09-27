@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
@@ -68,6 +69,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
@@ -110,6 +113,7 @@ import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
 import com.example.ui.components.KeepStyleFullscreenNoteEditor
 import com.example.ui.components.LockedNoteOverlay
+import com.example.ui.components.MarkdownHelper
 import com.example.ui.components.NoteCustomizationToolbar
 import com.example.ui.components.PinUnlockDialog
 import com.example.ui.components.RichContentView
@@ -272,7 +276,7 @@ fun NotesScreen(
                                 isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
                                 isGrid = true,
                                 onUnlock = {
-                                    pendingFullscreenOpen = false
+                                    pendingFullscreenOpen = true
                                     noteToUnlock = note
                                 },
                                 onTogglePin = { onTogglePinNote(note) },
@@ -320,7 +324,7 @@ fun NotesScreen(
                             isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
                             isGrid = true,
                             onUnlock = {
-                                pendingFullscreenOpen = false
+                                pendingFullscreenOpen = true
                                 noteToUnlock = note
                             },
                             onTogglePin = { onTogglePinNote(note) },
@@ -382,7 +386,7 @@ fun NotesScreen(
                                 isDarkTheme = isDarkTheme,
                                 isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
                                 onUnlock = {
-                                    pendingFullscreenOpen = false
+                                    pendingFullscreenOpen = true
                                     noteToUnlock = note
                                 },
                                 onTogglePin = { onTogglePinNote(note) },
@@ -429,7 +433,7 @@ fun NotesScreen(
                             isDarkTheme = isDarkTheme,
                             isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
                             onUnlock = {
-                                pendingFullscreenOpen = false
+                                pendingFullscreenOpen = true
                                 noteToUnlock = note
                             },
                             onTogglePin = { onTogglePinNote(note) },
@@ -545,7 +549,7 @@ fun NoteCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onEdit() }
+            .clickable { onOpenFullscreen() }
             .testTag("note_card_${note.id}"),
         shape = RoundedCornerShape(if (isGrid) 12.dp else 14.dp),
         colors = CardDefaults.cardColors(
@@ -631,56 +635,91 @@ fun NoteCard(
                     Spacer(modifier = Modifier.height(if (isGrid) 2.dp else 4.dp))
                 }
 
-                // Rich content with interactive checklists
+                // Unformatted content preview (symbols like "- item" stay verbatim without bullets)
                 if (note.content.isNotBlank()) {
-                    RichContentView(
-                        content = note.content,
-                        maxLines = if (isGrid) 3 else 8,
-                        onToggleCheckbox = onToggleCheckbox
+                    Text(
+                        text = note.content,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = if (isGrid) 13.sp else 14.sp,
+                            fontFamily = MarkdownHelper.getFontFamily(note.fontFamily)
+                        ),
+                        color = secondaryTextColor,
+                        maxLines = if (isGrid) 4 else 8,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(if (isGrid) 4.dp else 8.dp))
                 }
 
-                // Footer with zen mode, full screen and delete actions
+                // Footer with 3-dots menu containing edit, zen reading and delete actions
+                var showCardMenu by remember { mutableStateOf(false) }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = onOpenZenReading,
-                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MenuBook,
-                            contentDescription = "Modo Zen de Leitura",
-                            modifier = Modifier.size(if (isGrid) 16.dp else 19.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Box {
+                        IconButton(
+                            onClick = { showCardMenu = true },
+                            modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Mais opções",
+                                modifier = Modifier.size(if (isGrid) 16.dp else 20.dp),
+                                tint = textColor.copy(alpha = 0.75f)
+                            )
+                        }
 
-                    IconButton(
-                        onClick = onOpenFullscreen,
-                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "Abrir nota em tela cheia",
-                            modifier = Modifier.size(if (isGrid) 16.dp else 20.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Excluir Nota",
-                            modifier = Modifier.size(if (isGrid) 15.dp else 18.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                        DropdownMenu(
+                            expanded = showCardMenu,
+                            onDismissRequest = { showCardMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Editar nota") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showCardMenu = false
+                                    onEdit()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Ler (Modo Zen)") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.MenuBook,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                },
+                                onClick = {
+                                    showCardMenu = false
+                                    onOpenZenReading()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Excluir nota", color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    showCardMenu = false
+                                    onDelete()
+                                }
+                            )
+                        }
                     }
                 }
             }

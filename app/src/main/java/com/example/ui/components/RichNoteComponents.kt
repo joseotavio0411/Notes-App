@@ -1080,20 +1080,20 @@ fun KeepStyleFullscreenNoteEditor(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // Prominent Preview / Edit Toggle Chip
+                        // Prominent Format / Edit Toggle Chip
                         FilterChip(
                             selected = isPreviewMode,
                             onClick = { isPreviewMode = !isPreviewMode },
                             label = {
                                 Text(
-                                    text = if (isPreviewMode) "Editar" else "Prévia",
+                                    text = if (isPreviewMode) "Editar" else "Formatar",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp
                                 )
                             },
                             leadingIcon = {
                                 Icon(
-                                    imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility,
+                                    imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.AutoMirrored.Filled.FormatListBulleted,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -1301,7 +1301,7 @@ fun KeepStyleFullscreenNoteEditor(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Prévia visual formatada",
+                                text = "Visual formatado",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 fontWeight = FontWeight.SemiBold
@@ -1881,8 +1881,8 @@ fun KeepStyleFullscreenNoteEditor(
                                 modifier = Modifier.size(38.dp)
                             ) {
                                 Icon(
-                                    imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.Default.Visibility,
-                                    contentDescription = if (isPreviewMode) "Voltar para edição" else "Ver prévia formatada",
+                                    imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.AutoMirrored.Filled.FormatListBulleted,
+                                    contentDescription = if (isPreviewMode) "Voltar para edição" else "Formatar texto",
                                     tint = if (isPreviewMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -2025,14 +2025,14 @@ fun CustomizeNoteSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Visibility,
+                            imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
                             contentDescription = null,
                             tint = if (isPreviewMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Prévia Formatada",
+                            text = "Formatar",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = if (isPreviewMode) FontWeight.Bold else FontWeight.Normal,
                             color = if (isPreviewMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant

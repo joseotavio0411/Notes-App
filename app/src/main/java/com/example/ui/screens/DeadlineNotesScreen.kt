@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
@@ -69,6 +70,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -112,6 +115,7 @@ import com.example.ui.components.DateTimeHelper
 import com.example.ui.components.DeliberateEmptyState
 import com.example.ui.components.KeepStyleFullscreenNoteEditor
 import com.example.ui.components.LockedNoteOverlay
+import com.example.ui.components.MarkdownHelper
 import com.example.ui.components.NoteCustomizationToolbar
 import com.example.ui.components.PinUnlockDialog
 import com.example.ui.components.RichContentView
@@ -135,7 +139,8 @@ fun DeadlineNotesScreen(
     onUnlockNote: (noteId: Long, enteredPin: String, actualPin: String?) -> Boolean,
     isDarkTheme: Boolean,
     onUnlockNoteDirectly: ((Long) -> Unit)? = null,
-    onSnoozeNote: ((DeadlineNoteEntity, Int) -> Unit)? = null
+    onSnoozeNote: ((DeadlineNoteEntity, Int) -> Unit)? = null,
+    onOpenRecurrenceManager: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var showAddDeadlineNoteDialog by remember { mutableStateOf(false) }
@@ -208,12 +213,37 @@ fun DeadlineNotesScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Notas Ativas com Prazo (${notes.size})",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Notas Ativas com Prazo (${notes.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                onOpenRecurrenceManager?.let { openRecurrences ->
+                    Surface(
+                        onClick = openRecurrences,
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("deadline_notes_recurrence_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = "Gerenciar Recorrências",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
 
             Text(
                 text = "Auto-exclui ao expirar",
@@ -271,7 +301,7 @@ fun DeadlineNotesScreen(
                             isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
                             isGrid = true,
                             onUnlock = {
-                                pendingFullscreenOpen = false
+                                pendingFullscreenOpen = true
                                 noteToUnlock = note
                             },
                             onTogglePin = { onTogglePinNote(note) },
@@ -320,7 +350,7 @@ fun DeadlineNotesScreen(
                         isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
                         isGrid = true,
                         onUnlock = {
-                            pendingFullscreenOpen = false
+                            pendingFullscreenOpen = true
                             noteToUnlock = note
                         },
                         onTogglePin = { onTogglePinNote(note) },
@@ -440,7 +470,7 @@ fun DeadlineNoteCard(
         modifier = Modifier
             .fillMaxWidth()
             .breathingGlow(isCritical = isCritical)
-            .clickable { onEdit() }
+            .clickable { onOpenFullscreen() }
             .testTag("deadline_note_card_${note.id}"),
         shape = RoundedCornerShape(if (isGrid) 12.dp else 14.dp),
         colors = CardDefaults.cardColors(
@@ -588,57 +618,93 @@ fun DeadlineNoteCard(
                     Spacer(modifier = Modifier.height(if (isGrid) 2.dp else 4.dp))
                 }
 
+                // Unformatted content preview (symbols like "- item" stay verbatim without bullets)
                 if (note.content.isNotBlank()) {
-                    RichContentView(
-                        content = note.content,
-                        maxLines = if (isGrid) 3 else 6,
-                        onToggleCheckbox = onToggleCheckbox
+                    Text(
+                        text = note.content,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = if (isGrid) 13.sp else 14.sp,
+                            fontFamily = MarkdownHelper.getFontFamily(note.fontFamily)
+                        ),
+                        color = secondaryTextColor,
+                        maxLines = if (isGrid) 4 else 7,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(if (isGrid) 4.dp else 8.dp))
                 }
 
-                // Footer with full screen, snooze and delete actions
+                // Footer with 3-dots menu containing edit, snooze and delete actions
+                var showCardMenu by remember { mutableStateOf(false) }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    onSnooze?.let { snoozeAction ->
+                    Box {
                         IconButton(
-                            onClick = snoozeAction,
+                            onClick = { showCardMenu = true },
                             modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Schedule,
-                                contentDescription = "Adiar prazo",
-                                modifier = Modifier.size(if (isGrid) 15.dp else 18.dp),
-                                tint = MaterialTheme.colorScheme.tertiary
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Mais opções",
+                                modifier = Modifier.size(if (isGrid) 16.dp else 20.dp),
+                                tint = textColor.copy(alpha = 0.75f)
                             )
                         }
-                    }
 
-                    IconButton(
-                        onClick = onOpenFullscreen,
-                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "Abrir nota em tela cheia",
-                            modifier = Modifier.size(if (isGrid) 16.dp else 20.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Excluir Nota",
-                            modifier = Modifier.size(if (isGrid) 15.dp else 18.dp),
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                        DropdownMenu(
+                            expanded = showCardMenu,
+                            onDismissRequest = { showCardMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Editar nota") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showCardMenu = false
+                                    onEdit()
+                                }
+                            )
+                            onSnooze?.let { snoozeAction ->
+                                DropdownMenuItem(
+                                    text = { Text("Adiar prazo") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Schedule,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                            tint = MaterialTheme.colorScheme.tertiary
+                                        )
+                                    },
+                                    onClick = {
+                                        showCardMenu = false
+                                        snoozeAction()
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Excluir nota", color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                onClick = {
+                                    showCardMenu = false
+                                    onDelete()
+                                }
+                            )
+                        }
                     }
                 }
             }

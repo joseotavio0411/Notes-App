@@ -432,6 +432,9 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     }
 
     // --- Tab 3: Tarefas Diárias (Com Prazo) ---
+    val allRawDeadlineTasks: StateFlow<List<DeadlineTaskEntity>> = repository.allDeadlineTasks
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val activeDeadlineTasks: StateFlow<List<DeadlineTaskEntity>> = combine(
         repository.allDeadlineTasks,
         currentTimeMillis
@@ -621,6 +624,9 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     }
 
     // --- Tab 4: Notas Diárias (Com Prazo) ---
+    val allRawDeadlineNotes: StateFlow<List<DeadlineNoteEntity>> = repository.allDeadlineNotes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val activeDeadlineNotes: StateFlow<List<DeadlineNoteEntity>> = combine(
         repository.allDeadlineNotes,
         currentTimeMillis
@@ -630,6 +636,64 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
             isVisible && (note.deadlineTimestamp >= now || note.recurrence != "NONE")
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun reopenRecurringDeadlineTask(task: DeadlineTaskEntity) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            var deadline = task.deadlineTimestamp
+            if (deadline < now && task.recurrence != "NONE") {
+                deadline = DateTimeHelper.getNextRecurrence(deadline, task.recurrence)
+                while (deadline < now) {
+                    deadline = DateTimeHelper.getNextRecurrence(deadline, task.recurrence)
+                }
+            } else if (deadline < now) {
+                deadline = now + 24L * 60L * 60L * 1000L
+            }
+            val updated = task.copy(
+                isCompleted = false,
+                visibleFrom = 0L,
+                deadlineTimestamp = deadline
+            )
+            repository.updateDeadlineTask(updated)
+            NotificationHelper.scheduleAlarms(
+                context = getApplication(),
+                id = updated.id,
+                itemType = "TASK",
+                title = updated.text,
+                deadlineTimestamp = updated.deadlineTimestamp
+            )
+        }
+    }
+
+    fun reopenRecurringDeadlineNote(note: DeadlineNoteEntity) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            var deadline = note.deadlineTimestamp
+            if (deadline < now && note.recurrence != "NONE") {
+                deadline = DateTimeHelper.getNextRecurrence(deadline, note.recurrence)
+                while (deadline < now) {
+                    deadline = DateTimeHelper.getNextRecurrence(deadline, note.recurrence)
+                }
+            } else if (deadline < now) {
+                deadline = now + 24L * 60L * 60L * 1000L
+            }
+            val updated = note.copy(
+                visibleFrom = 0L,
+                deadlineTimestamp = deadline
+            )
+            repository.updateDeadlineNote(updated)
+        }
+    }
+
+    fun reopenRecurringTask(task: TaskEntity) {
+        viewModelScope.launch {
+            val updated = task.copy(
+                isCompleted = false,
+                visibleFrom = 0L
+            )
+            repository.updateTask(updated)
+        }
+    }
 
     fun addDeadlineNote(
         title: String,

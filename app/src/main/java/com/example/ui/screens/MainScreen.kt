@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -89,6 +90,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.ProductivityViewModel
 import com.example.ui.components.RecycleBinDialog
+import com.example.ui.components.RecurrenceManagerDialog
 import com.example.ui.components.SearchAttachmentFilter
 import com.example.ui.components.Skiper26CircularRevealOverlay
 import com.example.ui.components.Skiper26ThemeToggle
@@ -157,6 +159,8 @@ fun MainScreen(
     val tasks by viewModel.allTasks.collectAsStateWithLifecycle()
     val deadlineTasks by viewModel.activeDeadlineTasks.collectAsStateWithLifecycle()
     val deadlineNotes by viewModel.activeDeadlineNotes.collectAsStateWithLifecycle()
+    val rawDeadlineTasks by viewModel.allRawDeadlineTasks.collectAsStateWithLifecycle()
+    val rawDeadlineNotes by viewModel.allRawDeadlineNotes.collectAsStateWithLifecycle()
     val unlockedNoteIds by viewModel.unlockedNoteIds.collectAsStateWithLifecycle()
     val unlockedDeadlineNoteIds by viewModel.unlockedDeadlineNoteIds.collectAsStateWithLifecycle()
 
@@ -178,6 +182,7 @@ fun MainScreen(
     var showImportDialog by remember { mutableStateOf(false) }
     var showVersionDialog by remember { mutableStateOf(false) }
     var showRecycleBinDialog by remember { mutableStateOf(false) }
+    var showRecurrenceManagerDialog by remember { mutableStateOf(false) }
     var importText by remember { mutableStateOf("") }
 
     // Skiper26 circular reveal view transition animation state
@@ -274,6 +279,39 @@ fun MainScreen(
         )
     }
 
+    // Recurrence Manager Dialog for recurring tasks and notes
+    if (showRecurrenceManagerDialog) {
+        RecurrenceManagerDialog(
+            deadlineTasks = rawDeadlineTasks,
+            deadlineNotes = rawDeadlineNotes,
+            simpleTasks = tasks,
+            currentTime = currentTime,
+            isDarkTheme = isDarkTheme,
+            onDismiss = { showRecurrenceManagerDialog = false },
+            onReopenDeadlineTask = { task ->
+                viewModel.reopenRecurringDeadlineTask(task)
+                Toast.makeText(context, "Tarefa recorrente reaberta com sucesso!", Toast.LENGTH_SHORT).show()
+            },
+            onReopenDeadlineNote = { note ->
+                viewModel.reopenRecurringDeadlineNote(note)
+                Toast.makeText(context, "Nota recorrente reaberta com sucesso!", Toast.LENGTH_SHORT).show()
+            },
+            onReopenTask = { task ->
+                viewModel.reopenRecurringTask(task)
+                Toast.makeText(context, "Tarefa recorrente reaberta com sucesso!", Toast.LENGTH_SHORT).show()
+            },
+            onDeleteDeadlineTask = { task ->
+                viewModel.deleteDeadlineTask(task)
+            },
+            onDeleteDeadlineNote = { note ->
+                viewModel.deleteDeadlineNote(note)
+            },
+            onDeleteTask = { task ->
+                viewModel.deleteTask(task)
+            }
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -298,6 +336,20 @@ fun MainScreen(
                     }
                 },
                 actions = {
+                    // Clock button to manage recurrences on deadline tabs
+                    if (selectedTab == 2 || selectedTab == 3) {
+                        IconButton(
+                            onClick = { showRecurrenceManagerDialog = true },
+                            modifier = Modifier.testTag("recurrence_manager_top_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Schedule,
+                                contentDescription = "Gerenciar Recorrências",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
                     // Recycle Bin button with item count badge
                     IconButton(
                         onClick = { showRecycleBinDialog = true },
@@ -589,7 +641,8 @@ fun MainScreen(
                                 onToggleSubtask = { task, subId -> viewModel.toggleDeadlineSubtask(task, subId) },
                                 onAddSubtask = { task, title -> viewModel.addDeadlineSubtask(task, title) },
                                 onRemoveSubtask = { task, subId -> viewModel.removeDeadlineSubtask(task, subId) },
-                                isDarkTheme = isDarkTheme
+                                isDarkTheme = isDarkTheme,
+                                onOpenRecurrenceManager = { showRecurrenceManagerDialog = true }
                             )
                             3 -> DeadlineNotesScreen(
                                 notes = filteredDeadlineNotes,
@@ -619,7 +672,8 @@ fun MainScreen(
                                 unlockedNoteIds = unlockedDeadlineNoteIds,
                                 onUnlockNote = { noteId, enteredPin, actualPin -> viewModel.unlockDeadlineNote(noteId, enteredPin, actualPin) },
                                 onUnlockNoteDirectly = { noteId -> viewModel.unlockDeadlineNoteDirectly(noteId) },
-                                isDarkTheme = isDarkTheme
+                                isDarkTheme = isDarkTheme,
+                                onOpenRecurrenceManager = { showRecurrenceManagerDialog = true }
                             )
                         }
                     }
