@@ -1153,12 +1153,12 @@ fun EditDeadlineNoteDialog(
                     onClick = { saveAndClose() },
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Salvar")
+                    Text("Salvar", maxLines = 1, softWrap = false)
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismiss) {
-                    Text("Cancelar")
+                    Text("Cancelar", maxLines = 1, softWrap = false)
                 }
             }
         )
@@ -1652,12 +1652,12 @@ fun CreateDeadlineNoteDialog(
                 modifier = Modifier.testTag("save_new_deadline_note_button"),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Text("Salvar")
+                Text("Salvar", maxLines = 1, softWrap = false)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar")
+                Text("Cancelar", maxLines = 1, softWrap = false)
             }
         }
     )

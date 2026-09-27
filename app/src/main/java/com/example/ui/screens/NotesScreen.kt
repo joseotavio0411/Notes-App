@@ -1034,12 +1034,12 @@ fun EditNoteDialog(
                     onClick = { saveAndClose() },
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Salvar")
+                    Text("Salvar", maxLines = 1, softWrap = false)
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismiss) {
-                    Text("Cancelar")
+                    Text("Cancelar", maxLines = 1, softWrap = false)
                 }
             }
         )
@@ -1358,12 +1358,12 @@ fun CreateNoteDialog(
                     modifier = Modifier.testTag("save_note_button"),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Salvar")
+                    Text("Salvar", maxLines = 1, softWrap = false)
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismiss) {
-                    Text("Cancelar")
+                    Text("Cancelar", maxLines = 1, softWrap = false)
                 }
             }
         )

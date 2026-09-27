@@ -1068,7 +1068,7 @@ fun KeepStyleFullscreenNoteEditor(
                             onSave()
                             onDismiss()
                         },
-                        modifier = Modifier.size(44.dp)
+                        modifier = Modifier.size(40.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1080,35 +1080,20 @@ fun KeepStyleFullscreenNoteEditor(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // Prominent Format / Edit Toggle Chip
-                        FilterChip(
-                            selected = isPreviewMode,
+                        IconButton(
                             onClick = { isPreviewMode = !isPreviewMode },
-                            label = {
-                                Text(
-                                    text = if (isPreviewMode) "Editar" else "Formatar",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.AutoMirrored.Filled.FormatListBulleted,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                                selectedLeadingIconColor = MaterialTheme.colorScheme.primary
-                            ),
-                            modifier = Modifier.height(34.dp)
-                        )
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.AutoMirrored.Filled.FormatListBulleted,
+                                contentDescription = if (isPreviewMode) "Editar nota" else "Visualizar formatação",
+                                tint = if (isPreviewMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
 
                         IconButton(
                             onClick = onTogglePin,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
@@ -1119,7 +1104,7 @@ fun KeepStyleFullscreenNoteEditor(
 
                         IconButton(
                             onClick = onToggleLock,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 imageVector = if (isLocked) Icons.Default.Lock else Icons.Default.LockOpen,
@@ -1132,7 +1117,7 @@ fun KeepStyleFullscreenNoteEditor(
                         Box {
                             IconButton(
                                 onClick = { showTopMoreMenu = true },
-                                modifier = Modifier.size(44.dp)
+                                modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
@@ -1145,6 +1130,16 @@ fun KeepStyleFullscreenNoteEditor(
                                 expanded = showTopMoreMenu,
                                 onDismissRequest = { showTopMoreMenu = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text(if (isPreviewMode) "Editar nota" else "Visualizar formatado") },
+                                    onClick = {
+                                        showTopMoreMenu = false
+                                        isPreviewMode = !isPreviewMode
+                                    },
+                                    leadingIcon = {
+                                        Icon(if (isPreviewMode) Icons.Default.Edit else Icons.AutoMirrored.Filled.FormatListBulleted, null)
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Adicionar imagem") },
                                     onClick = {
@@ -1185,29 +1180,42 @@ fun KeepStyleFullscreenNoteEditor(
                             }
                         }
 
-                        // Beautifully formatted Save button (Pill with Check icon + Salvar text)
-                        FilledTonalButton(
+                        Spacer(modifier = Modifier.width(2.dp))
+
+                        // Beautifully formatted Save button (Pill with Check icon + Salvar text, strictly single-line)
+                        Button(
                             onClick = {
                                 onSave()
                                 onDismiss()
                             },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
                             shape = RoundedCornerShape(20.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                             modifier = Modifier
                                 .height(38.dp)
                                 .testTag("fullscreen_save_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Salvar",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Salvar",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
