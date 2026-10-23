@@ -63,6 +63,9 @@ android {
   }
 }
 
+// Output files are named MiNotes-debug.apk / MiNotes-release.apk
+base { archivesName = "MiNotes" }
+
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.
 secrets {
