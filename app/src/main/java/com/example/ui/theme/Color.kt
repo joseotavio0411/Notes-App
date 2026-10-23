@@ -3,16 +3,19 @@ package com.example.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // --- PALETA HERO / PRIMÁRIA ---
-val VioletRoyal = Color(0xFF7C3AED)          // Ação primária vibrante (Light mode) - WCAG AA > 4.8:1
+val VioletRoyal = Color(0xFF6D28D9)          // Ação primária (Light mode): mais escuro, contraste firme sobre o fundo lilás
 val VioletRoyalDark = Color(0xFFA78BFA)      // Luminescência primária para Dark Mode
 val VioletNeon = Color(0xFF956AFA)           // Destaque vibrante / acentos elétricos (Rules UI)
-val VioletDeepBase = Color(0xFF5B21B6)       // Fundo de botões pressionados / active state
+val VioletDeepBase = Color(0xFF4C1D95)       // Texto e ícones sobre o container de destaque (Light mode)
 
 // --- SUPERFÍCIES LIGHT (Névoa Lilás Perolada) ---
-val AmethystSurfaceLight = Color(0xFFFAF8FF)     // Fundo da janela (substitui o branco estéril)
+// No claro, o fundo lilás-acinzentado separa os cartões brancos; antes os dois
+// eram quase iguais e a tela parecia toda branca.
+val AmethystSurfaceLight = Color(0xFFEEEAF6)     // Fundo da janela
 val AmethystCardLight = Color(0xFFFFFFFF)        // Cartões elevados em branco puro
-val AmethystContainerLight = Color(0xFFF3EDFD)   // Pílulas, chips e inputs inativos
-val AmethystBorderLight = Color(0xFFE5DCF9)      // Hairline stroke sutil de 1dp
+val AmethystContainerLight = Color(0xFFF1ECFA)   // Pílulas, chips e inputs inativos
+val AmethystPrimaryContainerLight = Color(0xFFE6DCFD) // Container de destaque (indicador da barra, chips de prazo)
+val AmethystBorderLight = Color(0xFFDCD3EE)      // Hairline stroke de 1dp
 
 // --- SUPERFÍCIES DARK (Cinza Grafite/Slate com Roxo) ---
 val SlateBackgroundDark = Color(0xFF1E1D24)      // Fundo principal em cinza grafite elegante (substitui o preto absoluto)
@@ -29,8 +32,8 @@ val ObsidianContainerDark = SlateContainerDark
 val ObsidianBorderDark = SlateBorderDark
 
 // --- TIPOGRAFIA DE ALTO CONTRASTE ---
-val TextPrimaryLight = Color(0xFF150A2A)         // Preto enriquecido com matiz violeta profundo
-val TextSecondaryLight = Color(0xFF63567D)       // Cinza ametista para legendas e datas
+val TextPrimaryLight = Color(0xFF1A1030)         // Preto enriquecido com matiz violeta profundo
+val TextSecondaryLight = Color(0xFF5B5173)       // Cinza ametista para legendas e datas
 val TextPrimaryDark = Color(0xFFF3F3F7)          // Branco-cinza suave de alta legibilidade sobre cinza
 val TextSecondaryDark = Color(0xFFA8A7B8)        // Cinza neutro suave para legendas e informações secundárias
 
@@ -45,7 +48,7 @@ val StatusSuccessContainer = Color(0xFFD1FAE5)
 // Alias mantidos para retrocompatibilidade onde chamados diretamente
 val PurplePrimaryLight = VioletRoyal
 val PurpleOnPrimaryLight = Color.White
-val PurplePrimaryContainerLight = AmethystContainerLight
+val PurplePrimaryContainerLight = AmethystPrimaryContainerLight
 val PurpleOnPrimaryContainerLight = VioletDeepBase
 
 val PurplePrimaryDark = VioletRoyalDark
