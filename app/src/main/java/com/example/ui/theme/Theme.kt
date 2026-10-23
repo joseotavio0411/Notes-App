@@ -29,20 +29,30 @@ private val DarkColorScheme = darkColorScheme(
     error = StatusUrgentCrimson
 )
 
+// Superfícies com cor explícita: os padrões do Material deixavam cartões, folhas
+// e diálogos quase no mesmo tom do fundo.
 private val LightColorScheme = lightColorScheme(
     primary = VioletRoyal,
     onPrimary = Color.White,
-    primaryContainer = AmethystContainerLight,
+    primaryContainer = AmethystPrimaryContainerLight,
     onPrimaryContainer = VioletDeepBase,
     secondary = VioletNeon,
     onSecondary = Color.White,
     background = AmethystSurfaceLight,
     surface = AmethystCardLight,
     surfaceVariant = AmethystContainerLight,
+    surfaceContainerLowest = AmethystCardLight,
+    surfaceContainerLow = AmethystCardLight,
+    surfaceContainer = AmethystCardLight,
+    surfaceContainerHigh = AmethystContainerLight,
+    surfaceContainerHighest = AmethystContainerLight,
+    // Sem véu violeta por elevação: cartões e barras ficam brancos de verdade.
+    surfaceTint = Color.Transparent,
     onBackground = TextPrimaryLight,
     onSurface = TextPrimaryLight,
     onSurfaceVariant = TextSecondaryLight,
     outline = AmethystBorderLight,
+    outlineVariant = AmethystBorderLight,
     error = StatusUrgentCrimson
 )
 
