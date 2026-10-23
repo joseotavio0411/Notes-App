@@ -29,23 +29,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -123,8 +115,14 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
+import android.view.View
 import android.view.WindowManager
-import androidx.core.view.WindowCompat
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextRange
@@ -166,6 +164,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -947,7 +948,7 @@ fun LockedNoteOverlay(
 // GOOGLE KEEP STYLE FULLSCREEN NOTE EDITOR
 // ==========================================
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun KeepStyleFullscreenNoteEditor(
     title: String,
@@ -1029,31 +1030,79 @@ fun KeepStyleFullscreenNoteEditor(
             decorFitsSystemWindows = false
         )
     ) {
+        // Quando o teclado abre, o Android encolhe a janela do diálogo para cima dele, mas o
+        // Compose media o editor na altura da tela inteira: o fim da nota (e o botão de
+        // ferramentas) ficava atrás do teclado. A janela ocupa a área disponível (MATCH_PARENT)
+        // e o editor usa a altura real da janela, lida a cada mudança de layout.
+        // As margens vêm direto da janela: barras do sistema e teclado, se ainda sobrarem.
         val dialogView = LocalView.current
+        var topInsetPx by remember { mutableIntStateOf(0) }
+        var bottomInsetPx by remember { mutableIntStateOf(0) }
+        var windowHeightPx by remember { mutableIntStateOf(0) }
         DisposableEffect(dialogView) {
-            runCatching {
-                var parent = dialogView.parent
-                while (parent != null && parent !is DialogWindowProvider) {
-                    parent = parent.parent
-                }
-                (parent as? DialogWindowProvider)?.window?.let { window ->
-                    window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-                    WindowCompat.setDecorFitsSystemWindows(window, false)
+            var parent = dialogView.parent
+            while (parent != null && parent !is DialogWindowProvider) {
+                parent = parent.parent
+            }
+            val window = (parent as? DialogWindowProvider)?.window
+            val decorView = window?.decorView
+            val fillWindow = View.OnLayoutChangeListener { _, _, top, _, bottom, _, _, _, _ ->
+                windowHeightPx = bottom - top
+                val attrs = window?.attributes ?: return@OnLayoutChangeListener
+                if (attrs.width != WindowManager.LayoutParams.MATCH_PARENT ||
+                    attrs.height != WindowManager.LayoutParams.MATCH_PARENT
+                ) {
+                    window.setLayout(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT
+                    )
                 }
             }
-            onDispose {}
+            if (window != null && decorView != null) {
+                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                window.setLayout(
+                    WindowManager.LayoutParams.MATCH_PARENT,
+                    WindowManager.LayoutParams.MATCH_PARENT
+                )
+                decorView.addOnLayoutChangeListener(fillWindow)
+                windowHeightPx = decorView.height
+                ViewCompat.setOnApplyWindowInsetsListener(decorView) { view, insets ->
+                    val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                    val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+                    topInsetPx = bars.top
+                    bottomInsetPx = maxOf(bars.bottom, ime.bottom)
+                    ViewCompat.onApplyWindowInsets(view, insets)
+                }
+                ViewCompat.requestApplyInsets(decorView)
+            }
+            onDispose {
+                decorView?.let {
+                    it.removeOnLayoutChangeListener(fillWindow)
+                    ViewCompat.setOnApplyWindowInsetsListener(it, null)
+                }
+            }
+        }
+        val density = LocalDensity.current
+        val topInset = with(density) { topInsetPx.toDp() }
+        val bottomInset = with(density) { bottomInsetPx.toDp() }
+        val editorModifier = if (windowHeightPx > 0) {
+            Modifier
+                .fillMaxWidth()
+                .height(with(density) { windowHeightPx.toDp() })
+        } else {
+            Modifier.fillMaxSize()
         }
 
         Surface(
-            modifier = Modifier.fillMaxSize(),
+            modifier = editorModifier,
             color = ColorPalette.getSurfaceColor(colorHex, isDarkTheme)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .statusBarsPadding()
-                        .imePadding()
+                        .padding(top = topInset, bottom = bottomInset)
                 ) {
                 // TOP BAR (Google Keep style with well-formatted Save button)
                 Row(
@@ -1425,6 +1474,20 @@ fun KeepStyleFullscreenNoteEditor(
                             textAlign = currentTextAlign
                         )
                     } else {
+                        // Mantém o cursor visível enquanto se digita: rola até a linha do
+                        // cursor, com folga para o botão de ferramentas que flutua embaixo.
+                        val cursorBringIntoView = remember { BringIntoViewRequester() }
+                        var contentLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                        val cursorBottomRoomPx = with(density) { 96.dp.toPx() }
+                        LaunchedEffect(contentTextFieldValue.text, contentTextFieldValue.selection, windowHeightPx) {
+                            val layout = contentLayout ?: return@LaunchedEffect
+                            val transformed = richVisualTransformation.filter(AnnotatedString(contentTextFieldValue.text))
+                            val offset = transformed.offsetMapping
+                                .originalToTransformed(contentTextFieldValue.selection.end)
+                                .coerceIn(0, layout.layoutInput.text.length)
+                            val cursor = layout.getCursorRect(offset)
+                            cursorBringIntoView.bringIntoView(cursor.copy(bottom = cursor.bottom + cursorBottomRoomPx))
+                        }
                         BasicTextField(
                             value = contentTextFieldValue,
                             onValueChange = { newValue ->
@@ -1433,6 +1496,7 @@ fun KeepStyleFullscreenNoteEditor(
                                     onContentChange(newValue.text)
                                 }
                             },
+                            onTextLayout = { contentLayout = it },
                             visualTransformation = richVisualTransformation,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = currentFontSize.sp,
@@ -1445,6 +1509,7 @@ fun KeepStyleFullscreenNoteEditor(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .defaultMinSize(minHeight = 280.dp)
+                                .bringIntoViewRequester(cursorBringIntoView)
                                 .testTag("fullscreen_note_content"),
                             decorationBox = { innerTextField ->
                                 Box(
@@ -1486,7 +1551,7 @@ fun KeepStyleFullscreenNoteEditor(
                     elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        .padding(bottom = bottomInset)
                         .padding(end = 20.dp, bottom = 20.dp)
                         .testTag("fullscreen_pencil_customize_button")
                 ) {
@@ -1500,7 +1565,7 @@ fun KeepStyleFullscreenNoteEditor(
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        .padding(bottom = bottomInset)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
