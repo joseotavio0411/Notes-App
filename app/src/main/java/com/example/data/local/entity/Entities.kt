@@ -21,7 +21,9 @@ data class NoteEntity(
     val isDeleted: Boolean = false,
     val deletedAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val isArchived: Boolean = false,
+    val reminderAt: Long = 0L // Epoch millis do lembrete (0 = sem lembrete)
 )
 
 @Entity(tableName = "tasks")

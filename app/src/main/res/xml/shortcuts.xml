@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Atalhos ao segurar o ícone do MiNotes (inspirado no Google Keep e no Notion). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_note"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_note"
+        android:shortcutShortLabel="@string/shortcut_new_note">
+        <intent
+            android:action="com.example.action.NEW_NOTE"
+            android:targetClass="com.example.MainActivity"
+            android:targetPackage="com.aistudio.productivity.mbwggi">
+            <extra android:name="extra_note_kind" android:value="TEXT" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_list"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_list"
+        android:shortcutShortLabel="@string/shortcut_new_list">
+        <intent
+            android:action="com.example.action.NEW_NOTE"
+            android:targetClass="com.example.MainActivity"
+            android:targetPackage="com.aistudio.productivity.mbwggi">
+            <extra android:name="extra_note_kind" android:value="LIST" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_audio_note"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_audio"
+        android:shortcutShortLabel="@string/shortcut_new_audio">
+        <intent
+            android:action="com.example.action.NEW_NOTE"
+            android:targetClass="com.example.MainActivity"
+            android:targetPackage="com.aistudio.productivity.mbwggi">
+            <extra android:name="extra_note_kind" android:value="AUDIO" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="new_task"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_task"
+        android:shortcutShortLabel="@string/shortcut_new_task">
+        <intent
+            android:action="com.example.action.NEW_TASK"
+            android:targetClass="com.example.MainActivity"
+            android:targetPackage="com.aistudio.productivity.mbwggi" />
+    </shortcut>
+</shortcuts>

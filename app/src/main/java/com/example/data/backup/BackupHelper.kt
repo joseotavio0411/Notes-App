@@ -44,6 +44,8 @@ object BackupHelper {
                 put("deletedAt", n.deletedAt)
                 put("createdAt", n.createdAt)
                 put("updatedAt", n.updatedAt)
+                put("isArchived", n.isArchived)
+                put("reminderAt", n.reminderAt)
             }
             notesArray.put(obj)
         }
@@ -145,7 +147,9 @@ object BackupHelper {
                         isDeleted = obj.optBoolean("isDeleted", false),
                         deletedAt = obj.optLong("deletedAt", 0L),
                         createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
+                        isArchived = obj.optBoolean("isArchived", false),
+                        reminderAt = obj.optLong("reminderAt", 0L)
                     )
                 )
             }

@@ -15,11 +15,42 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface ProductivityDao {
     // --- Notas normais ---
-    @Query("SELECT * FROM notes WHERE isDeleted = 0 ORDER BY isPinned DESC, updatedAt DESC")
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND isArchived = 0 ORDER BY isPinned DESC, updatedAt DESC")
     fun getAllNotes(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND isArchived = 1 ORDER BY updatedAt DESC")
+    fun getArchivedNotes(): Flow<List<NoteEntity>>
 
     @Query("SELECT * FROM notes WHERE isDeleted = 1 ORDER BY deletedAt DESC")
     fun getDeletedNotes(): Flow<List<NoteEntity>>
+
+    @Query("SELECT * FROM notes WHERE id = :id")
+    suspend fun getNoteById(id: Long): NoteEntity?
+
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND isLocked = 0 ORDER BY isPinned DESC, updatedAt DESC")
+    suspend fun getUnlockedNotes(): List<NoteEntity>
+
+    @Query("SELECT * FROM notes WHERE isDeleted = 0 AND reminderAt > :now")
+    suspend fun getNotesWithFutureReminders(now: Long): List<NoteEntity>
+
+    // --- Ações em massa (seleção múltipla) ---
+    @Query("UPDATE notes SET isArchived = :archived, isPinned = CASE WHEN :archived THEN 0 ELSE isPinned END, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun setNotesArchived(ids: List<Long>, archived: Boolean, now: Long)
+
+    @Query("UPDATE notes SET isPinned = :pinned, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun setNotesPinned(ids: List<Long>, pinned: Boolean, now: Long)
+
+    @Query("UPDATE notes SET colorHex = :colorHex, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun setNotesColor(ids: List<Long>, colorHex: String, now: Long)
+
+    @Query("UPDATE notes SET isDeleted = 1, deletedAt = :deletedAt WHERE id IN (:ids)")
+    suspend fun softDeleteNotes(ids: List<Long>, deletedAt: Long)
+
+    @Query("UPDATE notes SET isDeleted = 0, deletedAt = 0 WHERE id IN (:ids)")
+    suspend fun restoreNotes(ids: List<Long>)
+
+    @Query("UPDATE notes SET reminderAt = :reminderAt WHERE id = :id")
+    suspend fun setNoteReminder(id: Long, reminderAt: Long)
 
     @Query("UPDATE notes SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
     suspend fun softDeleteNote(id: Long, deletedAt: Long)

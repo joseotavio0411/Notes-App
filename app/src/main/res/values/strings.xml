@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">MiNotes</string>
+
+    <!-- Atalhos do ícone -->
+    <string name="shortcut_new_note">Nova nota</string>
+    <string name="shortcut_new_list">Nova lista</string>
+    <string name="shortcut_new_audio">Nota de voz</string>
+    <string name="shortcut_new_task">Nova tarefa</string>
+
+    <!-- Widgets -->
+    <string name="widget_quick_add_name">Criar rápido</string>
+    <string name="widget_quick_add_description">Botões para criar nota, lista, áudio ou tarefa</string>
+    <string name="widget_note_name">Nota</string>
+    <string name="widget_note_description">Uma nota fixa na tela inicial</string>
 </resources>

@@ -25,6 +25,20 @@ object DateTimeHelper {
         return sdf.format(Date(millis))
     }
 
+    /** "Hoje 18:00", "Amanhã 08:00" ou "25/10 18:00", para chips de lembrete. */
+    fun formatShortDateTime(millis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+        val target = Calendar.getInstance().apply { timeInMillis = millis }
+        val today = Calendar.getInstance().apply { timeInMillis = nowMillis }
+        val time = formatTimeOnly(millis)
+        val sameYear = target.get(Calendar.YEAR) == today.get(Calendar.YEAR)
+        val dayDiff = target.get(Calendar.DAY_OF_YEAR) - today.get(Calendar.DAY_OF_YEAR)
+        return when {
+            sameYear && dayDiff == 0 -> "Hoje $time"
+            sameYear && dayDiff == 1 -> "Amanhã $time"
+            else -> SimpleDateFormat("dd/MM HH:mm", Locale("pt", "BR")).format(Date(millis))
+        }
+    }
+
     fun getTimeRemainingDescription(deadlineMillis: Long, nowMillis: Long): String {
         val diffMillis = deadlineMillis - nowMillis
         if (diffMillis <= 0) {

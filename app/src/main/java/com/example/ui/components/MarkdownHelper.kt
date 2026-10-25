@@ -540,4 +540,35 @@ class RichTextVisualTransformation(
     }
 }
 
-
+/**
+ * Destaca as ocorrências da busca ("Encontrar na nota") sobre a formatação da nota.
+ * As posições vêm do texto original e são convertidas pelo mesmo mapeamento da formatação.
+ */
+class FindHighlightTransformation(
+    private val base: VisualTransformation,
+    private val matches: List<IntRange>,
+    private val currentIndex: Int,
+    private val matchColor: Color,
+    private val currentMatchColor: Color
+) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val transformed = base.filter(text)
+        val mapping = transformed.offsetMapping
+        val length = transformed.text.length
+        val highlighted = AnnotatedString.Builder(transformed.text).apply {
+            matches.forEachIndexed { index, range ->
+                if (range.last >= text.length) return@forEachIndexed
+                val start = mapping.originalToTransformed(range.first).coerceIn(0, length)
+                val end = mapping.originalToTransformed(range.last + 1).coerceIn(start, length)
+                if (end > start) {
+                    addStyle(
+                        SpanStyle(background = if (index == currentIndex) currentMatchColor else matchColor),
+                        start,
+                        end
+                    )
+                }
+            }
+        }.toAnnotatedString()
+        return TransformedText(highlighted, mapping)
+    }
+}

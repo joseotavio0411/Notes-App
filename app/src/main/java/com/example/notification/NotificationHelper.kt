@@ -31,6 +31,15 @@ object NotificationHelper {
 
     private const val PREFS_NAME = "deadline_notifications_tracker"
 
+    // Lembretes de notas comuns e notas fixadas na barra de notificações
+    const val NOTE_REMINDER_CHANNEL_ID = "note_reminders_channel"
+    const val PINNED_NOTES_CHANNEL_ID = "pinned_notes_channel"
+    const val ACTION_NOTE_REMINDER = "com.example.ACTION_NOTE_REMINDER"
+    const val ACTION_UNPIN_NOTE_NOTIFICATION = "com.example.ACTION_UNPIN_NOTE_NOTIFICATION"
+    const val EXTRA_OPEN_NOTE_ID = "extra_open_note_id"
+    private const val PINNED_PREFS_NAME = "pinned_note_notifications"
+    private const val PINNED_IDS_KEY = "ids"
+
     fun initNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -284,6 +293,164 @@ object NotificationHelper {
                 showNotification(context, note.id, "NOTE", note.title.ifBlank { note.content.take(30) }, "24H", deadline)
             }
         }
+    }
+
+    // --- Lembretes de notas comuns ---
+
+    private fun initNoteChannels(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            manager.createNotificationChannel(
+                NotificationChannel(NOTE_REMINDER_CHANNEL_ID, "Lembretes de notas", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Lembretes definidos nas notas"
+                    enableVibration(true)
+                }
+            )
+            manager.createNotificationChannel(
+                NotificationChannel(PINNED_NOTES_CHANNEL_ID, "Notas fixadas", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Notas mantidas na barra de notificações para consulta rápida"
+                    setShowBadge(false)
+                }
+            )
+        }
+    }
+
+    private fun noteReminderRequestCode(noteId: Long): Int = 3_000_000 + (noteId % 1_000_000).toInt()
+    private fun pinnedNoteNotificationId(noteId: Long): Int = 4_000_000 + (noteId % 1_000_000).toInt()
+
+    private fun openNoteIntent(context: Context, noteId: Long, requestCode: Int): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_OPEN_NOTE_ID, noteId)
+        }
+        return PendingIntent.getActivity(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    fun scheduleNoteReminder(context: Context, noteId: Long, title: String, reminderAt: Long) {
+        cancelNoteReminder(context, noteId)
+        if (reminderAt <= System.currentTimeMillis()) return
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val intent = Intent(context, DeadlineNotificationReceiver::class.java).apply {
+            action = ACTION_NOTE_REMINDER
+            putExtra(EXTRA_ITEM_ID, noteId)
+            putExtra(EXTRA_TITLE, title)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            noteReminderRequestCode(noteId),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, reminderAt, pendingIntent)
+            } else {
+                alarmManager.set(AlarmManager.RTC_WAKEUP, reminderAt, pendingIntent)
+            }
+        } catch (e: SecurityException) {
+            alarmManager.set(AlarmManager.RTC_WAKEUP, reminderAt, pendingIntent)
+        }
+    }
+
+    fun cancelNoteReminder(context: Context, noteId: Long) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val intent = Intent(context, DeadlineNotificationReceiver::class.java).apply {
+            action = ACTION_NOTE_REMINDER
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            noteReminderRequestCode(noteId),
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
+    }
+
+    fun showNoteReminder(context: Context, noteId: Long, title: String) {
+        initNoteChannels(context)
+        val requestCode = noteReminderRequestCode(noteId)
+        val builder = NotificationCompat.Builder(context, NOTE_REMINDER_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setContentTitle("Lembrete")
+            .setContentText(title.ifBlank { "Nota sem título" })
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(openNoteIntent(context, noteId, requestCode))
+        try {
+            NotificationManagerCompat.from(context).notify(requestCode, builder.build())
+        } catch (e: SecurityException) {
+            // Permissão de notificação revogada
+        }
+    }
+
+    // --- Notas fixadas na barra de notificações ---
+
+    fun getPinnedNoteIds(context: Context): Set<Long> =
+        context.getSharedPreferences(PINNED_PREFS_NAME, Context.MODE_PRIVATE)
+            .getStringSet(PINNED_IDS_KEY, emptySet())
+            .orEmpty()
+            .mapNotNull { it.toLongOrNull() }
+            .toSet()
+
+    private fun savePinnedNoteIds(context: Context, ids: Set<Long>) {
+        context.getSharedPreferences(PINNED_PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putStringSet(PINNED_IDS_KEY, ids.map { it.toString() }.toSet())
+            .apply()
+    }
+
+    /** Mostra (ou atualiza) a nota fixa na barra. Retorna false se faltar permissão. */
+    fun showPinnedNote(context: Context, noteId: Long, title: String, content: String): Boolean {
+        initNoteChannels(context)
+        val notificationId = pinnedNoteNotificationId(noteId)
+        val unpinIntent = Intent(context, DeadlineNotificationReceiver::class.java).apply {
+            action = ACTION_UNPIN_NOTE_NOTIFICATION
+            putExtra(EXTRA_ITEM_ID, noteId)
+        }
+        val unpinPending = PendingIntent.getBroadcast(
+            context,
+            notificationId,
+            unpinIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val body = content.lines().joinToString("\n") { line ->
+            when {
+                line.startsWith("[x] ") || line.startsWith("- [x] ") -> "☑ " + line.substringAfter("] ")
+                line.startsWith("[ ] ") || line.startsWith("- [ ] ") -> "☐ " + line.substringAfter("] ")
+                else -> line
+            }
+        }
+        val builder = NotificationCompat.Builder(context, PINNED_NOTES_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_edit)
+            .setContentTitle(title.ifBlank { "Nota" })
+            .setContentText(body.lineSequence().firstOrNull { it.isNotBlank() } ?: "")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openNoteIntent(context, noteId, notificationId))
+            .addAction(0, "Desafixar", unpinPending)
+        return try {
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            savePinnedNoteIds(context, getPinnedNoteIds(context) + noteId)
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+
+    fun removePinnedNote(context: Context, noteId: Long) {
+        NotificationManagerCompat.from(context).cancel(pinnedNoteNotificationId(noteId))
+        savePinnedNoteIds(context, getPinnedNoteIds(context) - noteId)
     }
 
     private fun generateRequestCode(id: Long, itemType: String, reminderType: String): Int {

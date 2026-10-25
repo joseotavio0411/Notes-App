@@ -64,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -103,7 +104,9 @@ fun TasksScreen(
     onDeleteTask: (TaskEntity) -> Unit,
     onToggleSubtask: ((TaskEntity, String) -> Unit)? = null,
     onAddSubtask: ((TaskEntity, String) -> Unit)? = null,
-    onRemoveSubtask: ((TaskEntity, String) -> Unit)? = null
+    onRemoveSubtask: ((TaskEntity, String) -> Unit)? = null,
+    openAddTaskRequest: Boolean = false,
+    onAddTaskRequestConsumed: () -> Unit = {}
 ) {
     var newTaskText by remember { mutableStateOf("") }
     var newTaskIsPinned by remember { mutableStateOf(false) }
@@ -111,6 +114,14 @@ fun TasksScreen(
     var newTaskCategory by remember { mutableStateOf("Geral") }
     var newTaskSubtasks by remember { mutableStateOf<List<Subtask>>(emptyList()) }
     var showAddTaskDialog by remember { mutableStateOf(false) }
+
+    // Atalho "Nova tarefa" (ícone do app ou widget)
+    LaunchedEffect(openAddTaskRequest) {
+        if (openAddTaskRequest) {
+            showAddTaskDialog = true
+            onAddTaskRequestConsumed()
+        }
+    }
     var taskToDelete by remember { mutableStateOf<TaskEntity?>(null) }
 
     // Dialog for adding a new task
