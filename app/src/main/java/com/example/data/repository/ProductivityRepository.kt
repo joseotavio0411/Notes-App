@@ -20,6 +20,17 @@ class ProductivityRepository(private val dao: ProductivityDao) {
     suspend fun softDeleteNote(id: Long, deletedAt: Long = System.currentTimeMillis()) = dao.softDeleteNote(id, deletedAt)
     suspend fun restoreNote(id: Long) = dao.restoreNote(id)
 
+    val archivedNotes: Flow<List<NoteEntity>> = dao.getArchivedNotes()
+    suspend fun getNoteById(id: Long): NoteEntity? = dao.getNoteById(id)
+    suspend fun getUnlockedNotes(): List<NoteEntity> = dao.getUnlockedNotes()
+    suspend fun getNotesWithFutureReminders(now: Long): List<NoteEntity> = dao.getNotesWithFutureReminders(now)
+    suspend fun setNotesArchived(ids: List<Long>, archived: Boolean) = dao.setNotesArchived(ids, archived, System.currentTimeMillis())
+    suspend fun setNotesPinned(ids: List<Long>, pinned: Boolean) = dao.setNotesPinned(ids, pinned, System.currentTimeMillis())
+    suspend fun setNotesColor(ids: List<Long>, colorHex: String) = dao.setNotesColor(ids, colorHex, System.currentTimeMillis())
+    suspend fun softDeleteNotes(ids: List<Long>) = dao.softDeleteNotes(ids, System.currentTimeMillis())
+    suspend fun restoreNotes(ids: List<Long>) = dao.restoreNotes(ids)
+    suspend fun setNoteReminder(id: Long, reminderAt: Long) = dao.setNoteReminder(id, reminderAt)
+
     // Tasks
     val allTasks: Flow<List<TaskEntity>> = dao.getAllTasks()
     val deletedTasks: Flow<List<TaskEntity>> = dao.getDeletedTasks()

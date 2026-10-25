@@ -218,8 +218,168 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     }
 
     // --- Tab 1: Notes (Bloco de Notas) ---
-    val allNotes: StateFlow<List<NoteEntity>> = repository.allNotes
+
+    // Ordem da lista de notas, lembrada entre aberturas do app
+    private val _noteSortOrder = MutableStateFlow(
+        runCatching { NoteSortOrder.valueOf(themePrefs.getString("note_sort_order", null) ?: "") }
+            .getOrDefault(NoteSortOrder.UPDATED)
+    )
+    val noteSortOrder: StateFlow<NoteSortOrder> = _noteSortOrder.asStateFlow()
+
+    fun setNoteSortOrder(order: NoteSortOrder) {
+        _noteSortOrder.value = order
+        themePrefs.edit().putString("note_sort_order", order.name).apply()
+    }
+
+    val allNotes: StateFlow<List<NoteEntity>> = combine(repository.allNotes, _noteSortOrder) { notes, order ->
+        sortNotes(notes, order)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val archivedNotes: StateFlow<List<NoteEntity>> = repository.archivedNotes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private fun sortNotes(notes: List<NoteEntity>, order: NoteSortOrder): List<NoteEntity> {
+        val byOrder: Comparator<NoteEntity> = when (order) {
+            NoteSortOrder.UPDATED -> compareByDescending { it.updatedAt }
+            NoteSortOrder.CREATED -> compareByDescending { it.createdAt }
+            NoteSortOrder.TITLE -> compareBy<NoteEntity, String>(String.CASE_INSENSITIVE_ORDER) {
+                it.title.ifBlank { it.content }.trim()
+            }
+            NoteSortOrder.COLOR -> compareBy<NoteEntity> { note ->
+                com.example.ui.components.ColorPalette.options
+                    .indexOfFirst { it.hex.equals(note.colorHex, ignoreCase = true) }
+                    .let { if (it == -1) Int.MAX_VALUE else it }
+            }.thenByDescending { it.updatedAt }
+        }
+        return notes.sortedWith(compareByDescending<NoteEntity> { it.isPinned }.then(byOrder))
+    }
+
+    // --- Arquivo e ações em massa (seleção múltipla) ---
+
+    fun setNotesArchived(ids: Collection<Long>, archived: Boolean) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch { repository.setNotesArchived(ids.toList(), archived) }
+    }
+
+    fun setNotesPinned(ids: Collection<Long>, pinned: Boolean) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch { repository.setNotesPinned(ids.toList(), pinned) }
+    }
+
+    fun setNotesColor(ids: Collection<Long>, colorHex: String) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch { repository.setNotesColor(ids.toList(), colorHex) }
+    }
+
+    fun moveNotesToTrash(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        ids.forEach { id ->
+            NotificationHelper.cancelNoteReminder(getApplication(), id)
+            NotificationHelper.removePinnedNote(getApplication(), id)
+        }
+        viewModelScope.launch { repository.softDeleteNotes(ids.toList()) }
+    }
+
+    fun restoreNotesFromTrash(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch { repository.restoreNotes(ids.toList()) }
+    }
+
+    // --- Lembretes em notas comuns ---
+
+    fun setNoteReminder(note: NoteEntity, reminderAt: Long) {
+        viewModelScope.launch {
+            repository.setNoteReminder(note.id, reminderAt)
+            if (reminderAt > System.currentTimeMillis()) {
+                NotificationHelper.scheduleNoteReminder(
+                    getApplication(),
+                    note.id,
+                    note.title.ifBlank { note.content.take(40) },
+                    reminderAt
+                )
+            } else {
+                NotificationHelper.cancelNoteReminder(getApplication(), note.id)
+            }
+        }
+    }
+
+    /** Alarmes somem quando o celular reinicia: reagenda os lembretes futuros ao abrir o app. */
+    private fun rescheduleNoteReminders() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.getNotesWithFutureReminders(System.currentTimeMillis()).forEach { note ->
+                NotificationHelper.scheduleNoteReminder(
+                    getApplication(),
+                    note.id,
+                    note.title.ifBlank { note.content.take(40) },
+                    note.reminderAt
+                )
+            }
+        }
+    }
+
+    // --- Notas fixadas na barra de notificações ---
+
+    private val _notificationPinnedIds = MutableStateFlow(NotificationHelper.getPinnedNoteIds(application))
+    val notificationPinnedIds: StateFlow<Set<Long>> = _notificationPinnedIds.asStateFlow()
+
+    /** Retorna false quando falta a permissão de notificação. */
+    fun toggleNoteInNotifications(note: NoteEntity): Boolean {
+        val app = getApplication<Application>()
+        return if (note.id in NotificationHelper.getPinnedNoteIds(app)) {
+            NotificationHelper.removePinnedNote(app, note.id)
+            _notificationPinnedIds.value = NotificationHelper.getPinnedNoteIds(app)
+            true
+        } else {
+            val ok = NotificationHelper.showPinnedNote(app, note.id, note.title, note.content)
+            _notificationPinnedIds.value = NotificationHelper.getPinnedNoteIds(app)
+            ok
+        }
+    }
+
+    fun refreshNotificationPinnedIds() {
+        _notificationPinnedIds.value = NotificationHelper.getPinnedNoteIds(getApplication())
+    }
+
+    /** Mantém o texto das notas fixadas em dia (após editar) e as recoloca após reiniciar o celular. */
+    private fun refreshPinnedNoteNotifications() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val app = getApplication<Application>()
+            NotificationHelper.getPinnedNoteIds(app).forEach { id ->
+                val note = repository.getNoteById(id)
+                if (note == null || note.isDeleted || note.isLocked) {
+                    NotificationHelper.removePinnedNote(app, id)
+                } else {
+                    NotificationHelper.showPinnedNote(app, note.id, note.title, note.content)
+                }
+            }
+            _notificationPinnedIds.value = NotificationHelper.getPinnedNoteIds(app)
+        }
+    }
+
+    // --- Abertura por atalho, widget, notificação ou compartilhamento ---
+
+    private val _pendingLaunch = MutableStateFlow<LaunchAction?>(null)
+    val pendingLaunch: StateFlow<LaunchAction?> = _pendingLaunch.asStateFlow()
+
+    fun submitLaunchAction(action: LaunchAction) {
+        _pendingLaunch.value = action
+        when (action) {
+            is LaunchAction.NewTask -> _selectedTab.value = 1
+            else -> _selectedTab.value = 0
+        }
+    }
+
+    fun consumeLaunchAction() {
+        _pendingLaunch.value = null
+    }
+
+    suspend fun getNoteById(id: Long): NoteEntity? = repository.getNoteById(id)
+
+    init {
+        // Fica depois das propriedades acima, que precisam estar inicializadas
+        rescheduleNoteReminders()
+        refreshPinnedNoteNotifications()
+    }
 
     fun addNote(
         title: String,
@@ -263,6 +423,15 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     fun updateNote(note: NoteEntity) {
         viewModelScope.launch {
             repository.updateNote(note.copy(updatedAt = System.currentTimeMillis()))
+            val app = getApplication<Application>()
+            if (note.id in NotificationHelper.getPinnedNoteIds(app)) {
+                if (note.isLocked) {
+                    NotificationHelper.removePinnedNote(app, note.id)
+                    _notificationPinnedIds.value = NotificationHelper.getPinnedNoteIds(app)
+                } else {
+                    NotificationHelper.showPinnedNote(app, note.id, note.title, note.content)
+                }
+            }
         }
     }
 
@@ -275,19 +444,16 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     fun toggleNoteChecklistItem(note: NoteEntity, lineIndex: Int) {
         val lines = note.content.lines().toMutableList()
         if (lineIndex in lines.indices) {
-            val line = lines[lineIndex]
-            lines[lineIndex] = when {
-                line.startsWith("[ ] ") -> "[x] " + line.removePrefix("[ ] ")
-                line.startsWith("[x] ") -> "[ ] " + line.removePrefix("[x] ")
-                line.startsWith("- [ ] ") -> "- [x] " + line.removePrefix("- [ ] ")
-                line.startsWith("- [x] ") -> "- [ ] " + line.removePrefix("- [ ] ")
-                else -> line
-            }
+            lines[lineIndex] = com.example.ui.components.ChecklistOps.toggleLine(lines[lineIndex])
+
             updateNote(note.copy(content = lines.joinToString("\n")))
         }
     }
 
     fun moveToTrashNote(note: NoteEntity) {
+        NotificationHelper.cancelNoteReminder(getApplication(), note.id)
+        NotificationHelper.removePinnedNote(getApplication(), note.id)
+        _notificationPinnedIds.value = NotificationHelper.getPinnedNoteIds(getApplication())
         viewModelScope.launch {
             repository.softDeleteNote(note.id)
         }
@@ -767,14 +933,8 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     fun toggleDeadlineNoteChecklistItem(note: DeadlineNoteEntity, lineIndex: Int) {
         val lines = note.content.lines().toMutableList()
         if (lineIndex in lines.indices) {
-            val line = lines[lineIndex]
-            lines[lineIndex] = when {
-                line.startsWith("[ ] ") -> "[x] " + line.removePrefix("[ ] ")
-                line.startsWith("[x] ") -> "[ ] " + line.removePrefix("[x] ")
-                line.startsWith("- [ ] ") -> "- [x] " + line.removePrefix("- [ ] ")
-                line.startsWith("- [x] ") -> "- [ ] " + line.removePrefix("- [ ] ")
-                else -> line
-            }
+            lines[lineIndex] = com.example.ui.components.ChecklistOps.toggleLine(lines[lineIndex])
+
             updateDeadlineNote(note.copy(content = lines.joinToString("\n")))
         }
     }
@@ -853,7 +1013,7 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
     // --- Manual Backup & Restore ---
     fun getBackupJson(): String {
         return BackupHelper.exportToJson(
-            notes = allNotes.value,
+            notes = allNotes.value + archivedNotes.value,
             tasks = allTasks.value,
             deadlineTasks = activeDeadlineTasks.value,
             deadlineNotes = activeDeadlineNotes.value

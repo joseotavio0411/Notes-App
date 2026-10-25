@@ -1,6 +1,28 @@
 package com.example.ui.screens
 
 import android.Manifest
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.runtime.LaunchedEffect
+import com.example.ui.LaunchAction
+import com.example.ui.NoteKind
+import com.example.ui.NoteSortOrder
+import com.example.ui.components.ExpandableFabScrim
+import com.example.ui.components.ExpandableNoteFab
+import com.example.ui.components.NoteSelectionBar
+import com.example.ui.components.NoteSharing
+import com.example.ui.components.NoteSortMenuButton
+import com.example.ui.components.ReminderPickerDialog
 import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -122,6 +144,15 @@ import com.example.ui.components.VoiceRecordingDialog
 import com.example.ui.components.ZenReadingDialog
 import com.example.ui.components.copyUriToAppStorage
 
+/** Nova nota pedida pelo botão "+", por um atalho, widget ou compartilhamento. */
+private data class CreateNoteRequest(
+    val kind: NoteKind,
+    val title: String = "",
+    val content: String = "",
+    val imageUri: String? = null
+)
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NotesScreen(
     notes: List<NoteEntity>,
@@ -135,17 +166,96 @@ fun NotesScreen(
     unlockedNoteIds: Set<Long>,
     onUnlockNote: (noteId: Long, enteredPin: String, actualPin: String?) -> Boolean,
     onUnlockNoteDirectly: ((Long) -> Unit)? = null,
-    isDarkTheme: Boolean = isSystemInDarkTheme()
+    isDarkTheme: Boolean = isSystemInDarkTheme(),
+    sortOrder: NoteSortOrder = NoteSortOrder.UPDATED,
+    onSortOrderChange: (NoteSortOrder) -> Unit = {},
+    isArchiveView: Boolean = false,
+    onExitArchive: () -> Unit = {},
+    notificationPinnedIds: Set<Long> = emptySet(),
+    onArchiveNotes: (Set<Long>, Boolean) -> Unit = { _, _ -> },
+    onPinNotes: (Set<Long>, Boolean) -> Unit = { _, _ -> },
+    onColorNotes: (Set<Long>, String) -> Unit = { _, _ -> },
+    onDeleteNotes: (Set<Long>) -> Unit = {},
+    onSetReminder: (NoteEntity, Long) -> Unit = { _, _ -> },
+    onToggleNotificationPin: (NoteEntity) -> Unit = {},
+    launchAction: LaunchAction? = null,
+    onLaunchActionConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
-    var showAddNoteDialog by remember { mutableStateOf(false) }
+    var createRequest by remember { mutableStateOf<CreateNoteRequest?>(null) }
     var noteToUnlock by remember { mutableStateOf<NoteEntity?>(null) }
     var noteToEdit by remember { mutableStateOf<NoteEntity?>(null) }
     var noteToDelete by remember { mutableStateOf<NoteEntity?>(null) }
     var noteForZenReading by remember { mutableStateOf<NoteEntity?>(null) }
+    var noteForReminder by remember { mutableStateOf<NoteEntity?>(null) }
     var startInFullscreen by remember { mutableStateOf(false) }
     var pendingFullscreenOpen by remember { mutableStateOf(false) }
+    var fabExpanded by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    val selectionMode = selectedIds.isNotEmpty()
+
+    // Notas que saíram da lista (excluídas, arquivadas, filtradas) deixam a seleção
+    LaunchedEffect(notes) {
+        val visible = notes.map { it.id }.toSet()
+        if (selectedIds.any { it !in visible }) selectedIds = selectedIds.intersect(visible)
+    }
+    LaunchedEffect(isArchiveView) { selectedIds = emptySet() }
+    BackHandler(enabled = selectionMode) { selectedIds = emptySet() }
+    BackHandler(enabled = isArchiveView && !selectionMode) { onExitArchive() }
+
+    // Imagem escolhida pelo botão "+" > Imagem: abre a nota já com a imagem
+    val imageNoteLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val local = copyUriToAppStorage(context, uri)
+            if (local != null) createRequest = CreateNoteRequest(NoteKind.IMAGE, imageUri = local)
+        }
+    }
+
+    fun startNewNote(kind: NoteKind) {
+        if (kind == NoteKind.IMAGE) {
+            imageNoteLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        } else {
+            createRequest = CreateNoteRequest(kind)
+        }
+    }
+
+    fun openNote(note: NoteEntity, fullscreen: Boolean) {
+        if (note.isLocked && note.id !in unlockedNoteIds) {
+            pendingFullscreenOpen = fullscreen
+            noteToUnlock = note
+        } else {
+            startInFullscreen = fullscreen
+            noteToEdit = note
+        }
+    }
+
+    // Aberturas vindas de atalhos, widgets, notificações e compartilhamentos
+    LaunchedEffect(launchAction, notes) {
+        when (val action = launchAction) {
+            is LaunchAction.NewNote -> {
+                if (action.kind == NoteKind.IMAGE && action.imageUri == null) {
+                    startNewNote(NoteKind.IMAGE)
+                } else {
+                    createRequest = CreateNoteRequest(action.kind, action.title, action.content, action.imageUri)
+                }
+                onLaunchActionConsumed()
+            }
+            is LaunchAction.OpenNote -> {
+                val note = notes.find { it.id == action.noteId }
+                if (note != null) {
+                    openNote(note, fullscreen = true)
+                    onLaunchActionConsumed()
+                } else if (notes.isNotEmpty()) {
+                    Toast.makeText(context, "Nota não encontrada", Toast.LENGTH_SHORT).show()
+                    onLaunchActionConsumed()
+                }
+            }
+            else -> Unit
+        }
+    }
 
     // Zen reading dialog
     noteForZenReading?.let { zNote ->
@@ -157,14 +267,35 @@ fun NotesScreen(
         )
     }
 
-    // Dialog for creating a new note
-    if (showAddNoteDialog) {
+    noteForReminder?.let { note ->
+        ReminderPickerDialog(
+            currentReminderAt = note.reminderAt,
+            onSet = { at ->
+                onSetReminder(note, at)
+                noteForReminder = null
+                Toast.makeText(context, "Lembrete: ${DateTimeHelper.formatDateTime(at)}", Toast.LENGTH_SHORT).show()
+            },
+            onRemove = {
+                onSetReminder(note, 0L)
+                noteForReminder = null
+            },
+            onDismiss = { noteForReminder = null }
+        )
+    }
+
+    // Nova nota (botão "+", atalhos, widgets e compartilhamentos abrem direto em tela cheia)
+    createRequest?.let { request ->
         CreateNoteDialog(
             isDarkTheme = isDarkTheme,
-            onDismiss = { showAddNoteDialog = false },
+            initialTitle = request.title,
+            initialContent = if (request.kind == NoteKind.LIST && request.content.isBlank()) "[ ] " else request.content,
+            initialImageUri = request.imageUri,
+            startFullscreen = true,
+            startVoiceRecording = request.kind == NoteKind.AUDIO,
+            onDismiss = { createRequest = null },
             onSave = { title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath, category ->
                 onAddNote(title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath, category)
-                showAddNoteDialog = false
+                createRequest = null
             }
         )
     }
@@ -192,6 +323,43 @@ fun NotesScreen(
         )
     }
 
+    val renderCard: @Composable (NoteEntity, Boolean) -> Unit = { note, isGrid ->
+        val isUnlocked = !note.isLocked || (note.id in unlockedNoteIds)
+        NoteCard(
+            note = note,
+            isDarkTheme = isDarkTheme,
+            isUnlocked = isUnlocked,
+            isGrid = isGrid,
+            isSelected = note.id in selectedIds,
+            selectionMode = selectionMode,
+            isInNotifications = note.id in notificationPinnedIds,
+            onClick = {
+                if (selectionMode) {
+                    selectedIds = if (note.id in selectedIds) selectedIds - note.id else selectedIds + note.id
+                } else {
+                    openNote(note, fullscreen = true)
+                }
+            },
+            onLongPress = {
+                selectedIds = if (note.id in selectedIds) selectedIds - note.id else selectedIds + note.id
+            },
+            onUnlock = {
+                pendingFullscreenOpen = true
+                noteToUnlock = note
+            },
+            onTogglePin = { onTogglePinNote(note) },
+            onToggleCheckbox = { lineIdx -> onToggleChecklistItem(note, lineIdx) },
+            onEdit = { openNote(note, fullscreen = false) },
+            onOpenZenReading = { noteForZenReading = note },
+            onArchiveToggle = { onArchiveNotes(setOf(note.id), !note.isArchived) },
+            onSetReminder = { noteForReminder = note },
+            onToggleNotificationPin = { onToggleNotificationPin(note) },
+            onShare = { NoteSharing.shareAsText(context, note) },
+            onExportPdf = { NoteSharing.exportPdf(context, note) },
+            onDelete = { noteToDelete = note }
+        )
+    }
+
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
@@ -201,38 +369,81 @@ fun NotesScreen(
                 .padding(horizontal = 16.dp)
         ) {
 
-        // Section header with counter & View Mode toggle (Grid / List)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Minhas Notas (${notes.size})",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
+        if (selectionMode) {
+            val selectedNotes = notes.filter { it.id in selectedIds }
+            val allPinned = selectedNotes.isNotEmpty() && selectedNotes.all { it.isPinned }
+            NoteSelectionBar(
+                selectedCount = selectedIds.size,
+                allSelectedPinned = allPinned,
+                isArchiveView = isArchiveView,
+                isDarkTheme = isDarkTheme,
+                onClear = { selectedIds = emptySet() },
+                onTogglePin = {
+                    onPinNotes(selectedIds, !allPinned)
+                    selectedIds = emptySet()
+                },
+                onColor = { hex ->
+                    onColorNotes(selectedIds, hex)
+                    selectedIds = emptySet()
+                },
+                onArchiveToggle = {
+                    onArchiveNotes(selectedIds, !isArchiveView)
+                    selectedIds = emptySet()
+                },
+                onDelete = {
+                    onDeleteNotes(selectedIds)
+                    selectedIds = emptySet()
+                }
             )
-
-            IconButton(
-                onClick = onToggleGridMode,
-                modifier = Modifier.testTag("toggle_notes_view_button")
+        } else {
+            // Section header with counter, sort and View Mode toggle (Grid / List)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (isGridMode) Icons.Default.ViewAgenda else Icons.Default.GridView,
-                    contentDescription = if (isGridMode) "Modo Lista" else "Modo Grade",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    if (isArchiveView) {
+                        IconButton(onClick = onExitArchive, modifier = Modifier.testTag("exit_archive_button")) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar para as notas")
+                        }
+                    }
+                    Text(
+                        text = if (isArchiveView) "Arquivo (${notes.size})" else "Minhas Notas (${notes.size})",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                if (!isArchiveView) {
+                    NoteSortMenuButton(sortOrder = sortOrder, onSortOrderChange = onSortOrderChange)
+                }
+
+                IconButton(
+                    onClick = onToggleGridMode,
+                    modifier = Modifier.testTag("toggle_notes_view_button")
+                ) {
+                    Icon(
+                        imageVector = if (isGridMode) Icons.Default.ViewAgenda else Icons.Default.GridView,
+                        contentDescription = if (isGridMode) "Modo Lista" else "Modo Grade",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 
         // Notes List or Grid
         if (notes.isEmpty()) {
             DeliberateEmptyState(
-                title = "Nenhuma nota criada ainda",
-                description = "Toque no botão \"+\" no canto inferior direito para criar sua primeira anotação.",
-                icon = Icons.Default.Description,
+                title = if (isArchiveView) "Nenhuma nota arquivada" else "Nenhuma nota criada ainda",
+                description = if (isArchiveView) {
+                    "Notas arquivadas saem da lista principal sem ir para a lixeira."
+                } else {
+                    "Toque no botão \"+\" no canto inferior direito para criar sua primeira anotação."
+                },
+                icon = if (isArchiveView) Icons.Default.Archive else Icons.Default.Description,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -248,109 +459,13 @@ fun NotesScreen(
                     verticalItemSpacing = 10.dp
                 ) {
                     if (pinnedNotes.isNotEmpty()) {
-                        item(span = StaggeredGridItemSpan.FullLine) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PushPin,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "FIXADAS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-
-                        items(pinnedNotes, key = { it.id }) { note ->
-                            NoteCard(
-                                note = note,
-                                isDarkTheme = isDarkTheme,
-                                isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
-                                isGrid = true,
-                                onUnlock = {
-                                    pendingFullscreenOpen = true
-                                    noteToUnlock = note
-                                },
-                                onTogglePin = { onTogglePinNote(note) },
-                                onToggleCheckbox = { lineIdx -> onToggleChecklistItem(note, lineIdx) },
-                                onEdit = {
-                                    if (note.isLocked && note.id !in unlockedNoteIds) {
-                                        pendingFullscreenOpen = false
-                                        noteToUnlock = note
-                                    } else {
-                                        startInFullscreen = false
-                                        noteToEdit = note
-                                    }
-                                },
-                                onOpenFullscreen = {
-                                    if (note.isLocked && note.id !in unlockedNoteIds) {
-                                        pendingFullscreenOpen = true
-                                        noteToUnlock = note
-                                    } else {
-                                        startInFullscreen = true
-                                        noteToEdit = note
-                                    }
-                                },
-                                onOpenZenReading = { noteForZenReading = note },
-                                onDelete = { noteToDelete = note }
-                            )
-                        }
-
+                        item(span = StaggeredGridItemSpan.FullLine) { PinnedSectionHeader() }
+                        items(pinnedNotes, key = { it.id }) { note -> renderCard(note, true) }
                         if (otherNotes.isNotEmpty()) {
-                            item(span = StaggeredGridItemSpan.FullLine) {
-                                Text(
-                                    text = "OUTRAS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                                )
-                            }
+                            item(span = StaggeredGridItemSpan.FullLine) { OthersSectionHeader() }
                         }
                     }
-
-                    items(otherNotes, key = { it.id }) { note ->
-                        NoteCard(
-                            note = note,
-                            isDarkTheme = isDarkTheme,
-                            isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
-                            isGrid = true,
-                            onUnlock = {
-                                pendingFullscreenOpen = true
-                                noteToUnlock = note
-                            },
-                            onTogglePin = { onTogglePinNote(note) },
-                            onToggleCheckbox = { lineIdx -> onToggleChecklistItem(note, lineIdx) },
-                            onEdit = {
-                                if (note.isLocked && note.id !in unlockedNoteIds) {
-                                    pendingFullscreenOpen = false
-                                    noteToUnlock = note
-                                } else {
-                                    startInFullscreen = false
-                                    noteToEdit = note
-                                }
-                            },
-                            onOpenFullscreen = {
-                                if (note.isLocked && note.id !in unlockedNoteIds) {
-                                    pendingFullscreenOpen = true
-                                    noteToUnlock = note
-                                } else {
-                                    startInFullscreen = true
-                                    noteToEdit = note
-                                }
-                            },
-                            onOpenZenReading = { noteForZenReading = note },
-                            onDelete = { noteToDelete = note }
-                        )
-                    }
+                    items(otherNotes, key = { it.id }) { note -> renderCard(note, true) }
                 }
             } else {
                 LazyColumn(
@@ -359,128 +474,28 @@ fun NotesScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (pinnedNotes.isNotEmpty()) {
-                        item {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PushPin,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "FIXADAS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-
-                        items(pinnedNotes, key = { it.id }) { note ->
-                            NoteCard(
-                                note = note,
-                                isDarkTheme = isDarkTheme,
-                                isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
-                                onUnlock = {
-                                    pendingFullscreenOpen = true
-                                    noteToUnlock = note
-                                },
-                                onTogglePin = { onTogglePinNote(note) },
-                                onToggleCheckbox = { lineIdx -> onToggleChecklistItem(note, lineIdx) },
-                                onEdit = {
-                                    if (note.isLocked && note.id !in unlockedNoteIds) {
-                                        pendingFullscreenOpen = false
-                                        noteToUnlock = note
-                                    } else {
-                                        startInFullscreen = false
-                                        noteToEdit = note
-                                    }
-                                },
-                                onOpenFullscreen = {
-                                    if (note.isLocked && note.id !in unlockedNoteIds) {
-                                        pendingFullscreenOpen = true
-                                        noteToUnlock = note
-                                    } else {
-                                        startInFullscreen = true
-                                        noteToEdit = note
-                                    }
-                                },
-                                onOpenZenReading = { noteForZenReading = note },
-                                onDelete = { noteToDelete = note }
-                            )
-                        }
-
+                        item { PinnedSectionHeader() }
+                        items(pinnedNotes, key = { it.id }) { note -> renderCard(note, false) }
                         if (otherNotes.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "OUTRAS",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                                )
-                            }
+                            item { OthersSectionHeader() }
                         }
                     }
-
-                    items(otherNotes, key = { it.id }) { note ->
-                        NoteCard(
-                            note = note,
-                            isDarkTheme = isDarkTheme,
-                            isUnlocked = !note.isLocked || (note.id in unlockedNoteIds),
-                            onUnlock = {
-                                pendingFullscreenOpen = true
-                                noteToUnlock = note
-                            },
-                            onTogglePin = { onTogglePinNote(note) },
-                            onToggleCheckbox = { lineIdx -> onToggleChecklistItem(note, lineIdx) },
-                            onEdit = {
-                                if (note.isLocked && note.id !in unlockedNoteIds) {
-                                    pendingFullscreenOpen = false
-                                    noteToUnlock = note
-                                } else {
-                                    startInFullscreen = false
-                                    noteToEdit = note
-                                }
-                            },
-                            onOpenFullscreen = {
-                                if (note.isLocked && note.id !in unlockedNoteIds) {
-                                    pendingFullscreenOpen = true
-                                    noteToUnlock = note
-                                } else {
-                                    startInFullscreen = true
-                                    noteToEdit = note
-                                }
-                            },
-                            onOpenZenReading = { noteForZenReading = note },
-                            onDelete = { noteToDelete = note }
-                        )
-                    }
+                    items(otherNotes, key = { it.id }) { note -> renderCard(note, false) }
                 }
             }
         }
     }
 
-    // Minimalist circular Floating Action Button with app theme color
-    FloatingActionButton(
-        onClick = { showAddNoteDialog = true },
-        shape = CircleShape,
-        containerColor = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
-        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(16.dp)
-            .testTag("fab_add_note")
-    ) {
-        Icon(
-            imageVector = Icons.Default.Add,
-            contentDescription = "Adicionar Nota",
-            modifier = Modifier.size(28.dp)
+    // Botão "+" que se expande com os tipos de nota (inspirado no Google Keep)
+    if (!isArchiveView && !selectionMode) {
+        ExpandableFabScrim(expanded = fabExpanded, onDismiss = { fabExpanded = false })
+        ExpandableNoteFab(
+            expanded = fabExpanded,
+            onExpandedChange = { fabExpanded = it },
+            onSelect = { kind -> startNewNote(kind) },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
         )
     }
 }
@@ -499,7 +514,8 @@ fun NotesScreen(
                 onUpdateNote(updatedNote)
                 noteToEdit = null
                 startInFullscreen = false
-            }
+            },
+            onSetReminder = { noteForReminder = note }
         )
     }
 
@@ -530,32 +546,80 @@ fun NotesScreen(
 }
 
 @Composable
+private fun PinnedSectionHeader() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.PushPin,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = "FIXADAS",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
+
+@Composable
+private fun OthersSectionHeader() {
+    Text(
+        text = "OUTRAS",
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 fun NoteCard(
     note: NoteEntity,
     isDarkTheme: Boolean,
     isUnlocked: Boolean,
     isGrid: Boolean = false,
+    isSelected: Boolean = false,
+    selectionMode: Boolean = false,
+    isInNotifications: Boolean = false,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit = {},
     onUnlock: () -> Unit,
     onTogglePin: () -> Unit,
     onToggleCheckbox: (Int) -> Unit,
     onEdit: () -> Unit,
-    onOpenFullscreen: () -> Unit,
     onOpenZenReading: () -> Unit,
+    onArchiveToggle: () -> Unit = {},
+    onSetReminder: () -> Unit = {},
+    onToggleNotificationPin: () -> Unit = {},
+    onShare: () -> Unit = {},
+    onExportPdf: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     val textColor = ColorPalette.getOptimalTextColor(note.colorHex, isDarkTheme)
     val secondaryTextColor = textColor.copy(alpha = 0.75f)
+    val hasReminder = note.reminderAt > System.currentTimeMillis()
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onOpenFullscreen() }
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
             .testTag("note_card_${note.id}"),
         shape = RoundedCornerShape(if (isGrid) 12.dp else 14.dp),
         colors = CardDefaults.cardColors(
             containerColor = ColorPalette.getSurfaceColor(note.colorHex, isDarkTheme)
         ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+        border = if (isSelected) {
+            BorderStroke(2.5.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        },
         elevation = CardDefaults.cardElevation(defaultElevation = if (note.isPinned) 3.dp else 1.dp)
     ) {
         LockedNoteOverlay(
@@ -585,7 +649,7 @@ fun NoteCard(
                     )
                 }
 
-                // Title row with Pin & Lock indicators
+                // Title row with selection, Pin & Lock indicators
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -617,16 +681,27 @@ fun NoteCard(
                             )
                         }
 
-                        IconButton(
-                            onClick = onTogglePin,
-                            modifier = Modifier.size(if (isGrid) 28.dp else 40.dp)
-                        ) {
+                        if (selectionMode) {
                             Icon(
-                                imageVector = if (note.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
-                                contentDescription = if (note.isPinned) "Desafixar" else "Fixar nota",
-                                tint = if (note.isPinned) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.6f),
-                                modifier = Modifier.size(if (isGrid) 15.dp else 18.dp)
+                                imageVector = if (isSelected) Icons.Default.CheckCircle else Icons.Outlined.Circle,
+                                contentDescription = if (isSelected) "Selecionada" else "Não selecionada",
+                                tint = if (isSelected) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.5f),
+                                modifier = Modifier
+                                    .padding(4.dp)
+                                    .size(if (isGrid) 18.dp else 22.dp)
                             )
+                        } else if (!note.isArchived) {
+                            IconButton(
+                                onClick = onTogglePin,
+                                modifier = Modifier.size(if (isGrid) 28.dp else 40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (note.isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin,
+                                    contentDescription = if (note.isPinned) "Desafixar" else "Fixar nota",
+                                    tint = if (note.isPinned) MaterialTheme.colorScheme.primary else textColor.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(if (isGrid) 15.dp else 18.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -651,16 +726,55 @@ fun NoteCard(
                     Spacer(modifier = Modifier.height(if (isGrid) 4.dp else 8.dp))
                 }
 
-                // Footer with 3-dots menu containing edit, zen reading and delete actions
+                // Footer: lembrete/notificação e menu com as ações da nota
                 var showCardMenu by remember { mutableStateOf(false) }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (hasReminder) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Alarm,
+                                    contentDescription = "Lembrete",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = DateTimeHelper.formatShortDateTime(note.reminderAt),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+                    if (isInNotifications) {
+                        Icon(
+                            Icons.Default.NotificationsActive,
+                            contentDescription = "Fixada nas notificações",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .size(if (isGrid) 14.dp else 16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
                     Box {
                         IconButton(
                             onClick = { showCardMenu = true },
+                            enabled = !selectionMode,
                             modifier = Modifier.size(if (isGrid) 28.dp else 36.dp)
                         ) {
                             Icon(
@@ -675,50 +789,31 @@ fun NoteCard(
                             expanded = showCardMenu,
                             onDismissRequest = { showCardMenu = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("Editar nota") },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
-                                onClick = {
-                                    showCardMenu = false
-                                    onEdit()
+                            NoteMenuItem("Editar nota", Icons.Default.Edit) { showCardMenu = false; onEdit() }
+                            NoteMenuItem("Ler (Modo Zen)", Icons.Default.MenuBook, MaterialTheme.colorScheme.primary) {
+                                showCardMenu = false; onOpenZenReading()
+                            }
+                            if (!note.isLocked || isUnlocked) {
+                                NoteMenuItem(if (hasReminder) "Alterar lembrete" else "Lembrete", Icons.Default.Alarm) {
+                                    showCardMenu = false; onSetReminder()
                                 }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Ler (Modo Zen)") },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.MenuBook,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                },
-                                onClick = {
-                                    showCardMenu = false
-                                    onOpenZenReading()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Excluir nota", color = MaterialTheme.colorScheme.error) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                },
-                                onClick = {
-                                    showCardMenu = false
-                                    onDelete()
-                                }
-                            )
+                            }
+                            if (!note.isLocked) {
+                                NoteMenuItem(
+                                    if (isInNotifications) "Tirar das notificações" else "Fixar nas notificações",
+                                    if (isInNotifications) Icons.Default.NotificationsOff else Icons.Default.NotificationsActive
+                                ) { showCardMenu = false; onToggleNotificationPin() }
+                                NoteMenuItem("Compartilhar", Icons.Default.Share) { showCardMenu = false; onShare() }
+                                NoteMenuItem("Exportar PDF", Icons.Default.PictureAsPdf) { showCardMenu = false; onExportPdf() }
+                            }
+                            NoteMenuItem(
+                                if (note.isArchived) "Desarquivar" else "Arquivar",
+                                if (note.isArchived) Icons.Default.Unarchive else Icons.Default.Archive
+                            ) { showCardMenu = false; onArchiveToggle() }
+                            HorizontalDivider()
+                            NoteMenuItem("Excluir nota", Icons.Default.Delete, MaterialTheme.colorScheme.error, isDestructive = true) {
+                                showCardMenu = false; onDelete()
+                            }
                         }
                     }
                 }
@@ -728,12 +823,28 @@ fun NoteCard(
 }
 
 @Composable
+private fun NoteMenuItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    isDestructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    DropdownMenuItem(
+        text = { Text(label, color = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface) },
+        leadingIcon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = tint) },
+        onClick = onClick
+    )
+}
+
+@Composable
 fun EditNoteDialog(
     note: NoteEntity,
     isDarkTheme: Boolean,
     startFullscreen: Boolean = false,
     onDismiss: () -> Unit,
-    onSave: (NoteEntity) -> Unit
+    onSave: (NoteEntity) -> Unit,
+    onSetReminder: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
 
@@ -859,7 +970,21 @@ fun EditNoteDialog(
             fontSize = fontSize,
             onFontSizeChange = { fontSize = it },
             fontFamily = fontFamily,
-            onFontFamilyChange = { fontFamily = it }
+            onFontFamilyChange = { fontFamily = it },
+            reminderAt = note.reminderAt,
+            onSetReminder = onSetReminder?.let { open ->
+                {
+                    // Salva o que foi digitado antes de abrir o seletor de lembrete
+                    saveAndClose()
+                    open()
+                }
+            },
+            onShare = {
+                NoteSharing.shareAsText(context, note.copy(title = title, content = content))
+            },
+            onExportPdf = {
+                NoteSharing.exportPdf(context, note.copy(title = title, content = content))
+            }
         )
     } else {
         AlertDialog(
@@ -1049,6 +1174,11 @@ fun EditNoteDialog(
 @Composable
 fun CreateNoteDialog(
     isDarkTheme: Boolean,
+    initialTitle: String = "",
+    initialContent: String = "",
+    initialImageUri: String? = null,
+    startFullscreen: Boolean = false,
+    startVoiceRecording: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (
         title: String,
@@ -1064,15 +1194,15 @@ fun CreateNoteDialog(
 ) {
     val context = LocalContext.current
 
-    var isFullscreen by remember { mutableStateOf(false) }
-    var title by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
+    var isFullscreen by remember { mutableStateOf(startFullscreen) }
+    var title by remember { mutableStateOf(initialTitle) }
+    var content by remember { mutableStateOf(initialContent) }
     var colorHex by remember { mutableStateOf("#FFFFFF") }
     var category by remember { mutableStateOf("Geral") }
     var isPinned by remember { mutableStateOf(false) }
     var isLocked by remember { mutableStateOf(false) }
     var lockPin by remember { mutableStateOf<String?>("1234") }
-    var imageUri by remember { mutableStateOf<String?>(null) }
+    var imageUri by remember { mutableStateOf(initialImageUri) }
     var audioPath by remember { mutableStateOf<String?>(null) }
 
     var isRecordingVoice by remember { mutableStateOf(false) }
@@ -1119,6 +1249,17 @@ fun CreateNoteDialog(
                 showSetPinDialog = false
             }
         )
+    }
+
+    // Botão "+" > Áudio: já começa gravando
+    LaunchedEffect(Unit) {
+        if (startVoiceRecording) {
+            val hasPerm = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+            if (hasPerm) isRecordingVoice = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
 
     fun saveAndClose() {

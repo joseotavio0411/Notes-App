@@ -19,7 +19,7 @@ import com.example.data.local.entity.TaskEntity
         DeadlineTaskEntity::class,
         DeadlineNoteEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -145,6 +145,25 @@ abstract class AppDatabase : RoomDatabase() {
             if (!dlNotesCols.contains("deletedAt")) db.execSQL("ALTER TABLE `deadline_notes` ADD COLUMN `deletedAt` INTEGER NOT NULL DEFAULT 0")
         }
 
+        // v7: notas arquivadas e lembrete em notas comuns. As versões antigas chegam aqui
+        // passando por v6 (Room encadeia as migrações).
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val cursor = db.query("PRAGMA table_info(`notes`)")
+                val notesCols = mutableSetOf<String>()
+                try {
+                    val nameIndex = cursor.getColumnIndex("name")
+                    while (cursor.moveToNext()) {
+                        if (nameIndex != -1) notesCols.add(cursor.getString(nameIndex))
+                    }
+                } finally {
+                    cursor.close()
+                }
+                if (!notesCols.contains("isArchived")) db.execSQL("ALTER TABLE `notes` ADD COLUMN `isArchived` INTEGER NOT NULL DEFAULT 0")
+                if (!notesCols.contains("reminderAt")) db.execSQL("ALTER TABLE `notes` ADD COLUMN `reminderAt` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         private val MIGRATION_5_6 = object : Migration(5, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
         private val MIGRATION_4_6 = object : Migration(4, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
         private val MIGRATION_3_6 = object : Migration(3, 6) { override fun migrate(db: SupportSQLiteDatabase) = migrateToV6(db) }
@@ -167,6 +186,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "productivity_database"
                 )
                 .addMigrations(
+                    MIGRATION_6_7,
                     MIGRATION_5_6,
                     MIGRATION_4_6,
                     MIGRATION_3_6,

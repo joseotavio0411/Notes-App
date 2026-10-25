@@ -1,6 +1,14 @@
 package com.example.ui.screens
 
 import android.content.Intent
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.runtime.LaunchedEffect
+import androidx.core.app.NotificationManagerCompat
+import com.example.ui.LaunchAction
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
@@ -163,6 +171,14 @@ fun MainScreen(
     val rawDeadlineNotes by viewModel.allRawDeadlineNotes.collectAsStateWithLifecycle()
     val unlockedNoteIds by viewModel.unlockedNoteIds.collectAsStateWithLifecycle()
     val unlockedDeadlineNoteIds by viewModel.unlockedDeadlineNoteIds.collectAsStateWithLifecycle()
+    val archivedNotes by viewModel.archivedNotes.collectAsStateWithLifecycle()
+    val noteSortOrder by viewModel.noteSortOrder.collectAsStateWithLifecycle()
+    val notificationPinnedIds by viewModel.notificationPinnedIds.collectAsStateWithLifecycle()
+    val pendingLaunch by viewModel.pendingLaunch.collectAsStateWithLifecycle()
+    var showArchive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedTab) { if (selectedTab != 0) showArchive = false }
+    LaunchedEffect(pendingLaunch) { if (pendingLaunch != null) showArchive = false }
 
     // Trash state
     val deletedNotes by viewModel.deletedNotes.collectAsStateWithLifecycle()
@@ -223,6 +239,51 @@ fun MainScreen(
         else notes.filter { note ->
             note.title.contains(searchQuery, ignoreCase = true) ||
                 note.content.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    val filteredArchivedNotes = remember(archivedNotes, searchQuery) {
+        if (searchQuery.isBlank()) archivedNotes
+        else archivedNotes.filter { note ->
+            note.title.contains(searchQuery, ignoreCase = true) ||
+                note.content.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    // Lembretes e notas fixadas precisam da permissão de notificação (Android 13+)
+    var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val action = pendingNotificationAction
+        pendingNotificationAction = null
+        if (granted) {
+            action?.invoke()
+        } else {
+            Toast.makeText(context, "Ative as notificações do MiNotes para usar este recurso", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun withNotificationPermission(action: () -> Unit) {
+        if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+            action()
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pendingNotificationAction = action
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            Toast.makeText(context, "Ative as notificações do MiNotes nas configurações do Android", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun showUndoSnackbar(message: String, onUndo: () -> Unit) {
+        coroutineScope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = "Desfazer",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) onUndo()
         }
     }
 
@@ -428,6 +489,18 @@ fun MainScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text("Arquivo (${archivedNotes.size})") },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.setSelectedTab(0)
+                                    showArchive = true
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Archive, contentDescription = null)
+                                },
+                                modifier = Modifier.testTag("menu_archive")
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Lixeira ($trashTotalCount)") },
                                 onClick = {
                                     showMenu = false
@@ -563,7 +636,52 @@ fun MainScreen(
                     ) { currentTab ->
                         when (currentTab) {
                             0 -> NotesScreen(
-                                notes = filteredNotes,
+                                notes = if (showArchive) filteredArchivedNotes else filteredNotes,
+                                sortOrder = noteSortOrder,
+                                onSortOrderChange = { viewModel.setNoteSortOrder(it) },
+                                isArchiveView = showArchive,
+                                onExitArchive = { showArchive = false },
+                                notificationPinnedIds = notificationPinnedIds,
+                                onArchiveNotes = { ids, archived ->
+                                    viewModel.setNotesArchived(ids, archived)
+                                    val count = ids.size
+                                    val message = when {
+                                        archived && count == 1 -> "Nota arquivada"
+                                        archived -> "$count notas arquivadas"
+                                        count == 1 -> "Nota desarquivada"
+                                        else -> "$count notas desarquivadas"
+                                    }
+                                    showUndoSnackbar(message) { viewModel.setNotesArchived(ids, !archived) }
+                                },
+                                onPinNotes = { ids, pinned -> viewModel.setNotesPinned(ids, pinned) },
+                                onColorNotes = { ids, hex -> viewModel.setNotesColor(ids, hex) },
+                                onDeleteNotes = { ids ->
+                                    viewModel.moveNotesToTrash(ids)
+                                    val message = if (ids.size == 1) "Nota movida para a lixeira" else "${ids.size} notas movidas para a lixeira"
+                                    showUndoSnackbar(message) { viewModel.restoreNotesFromTrash(ids) }
+                                },
+                                onSetReminder = { note, at ->
+                                    if (at > 0L) {
+                                        withNotificationPermission { viewModel.setNoteReminder(note, at) }
+                                    } else {
+                                        viewModel.setNoteReminder(note, 0L)
+                                    }
+                                },
+                                onToggleNotificationPin = { note ->
+                                    val wasPinned = note.id in notificationPinnedIds
+                                    val toggle = {
+                                        if (viewModel.toggleNoteInNotifications(note)) {
+                                            Toast.makeText(
+                                                context,
+                                                if (wasPinned) "Nota tirada das notificações" else "Nota fixada nas notificações",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                    if (wasPinned) toggle() else withNotificationPermission(toggle)
+                                },
+                                launchAction = pendingLaunch?.takeIf { it !is LaunchAction.NewTask },
+                                onLaunchActionConsumed = { viewModel.consumeLaunchAction() },
                                 isGridMode = isNotesGridMode,
                                 onToggleGridMode = { viewModel.toggleNotesGridMode() },
                                 onAddNote = { title, content, colorHex, isPinned, isLocked, lockPin, imageUri, audioPath, category ->
@@ -615,7 +733,9 @@ fun MainScreen(
                                 },
                                 onToggleSubtask = { task, subId -> viewModel.toggleSubtask(task, subId) },
                                 onAddSubtask = { task, title -> viewModel.addSubtask(task, title) },
-                                onRemoveSubtask = { task, subId -> viewModel.removeSubtask(task, subId) }
+                                onRemoveSubtask = { task, subId -> viewModel.removeSubtask(task, subId) },
+                                openAddTaskRequest = pendingLaunch is LaunchAction.NewTask,
+                                onAddTaskRequestConsumed = { viewModel.consumeLaunchAction() }
                             )
                             2 -> DeadlineTasksScreen(
                                 tasks = filteredDeadlineTasks,

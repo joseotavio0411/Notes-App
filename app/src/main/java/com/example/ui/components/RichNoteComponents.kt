@@ -116,6 +116,25 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import android.view.View
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Notes
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
+import androidx.compose.material.icons.filled.VerticalAlignBottom
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import android.view.WindowManager
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -977,7 +996,11 @@ fun KeepStyleFullscreenNoteEditor(
     fontFamily: String = "DEFAULT",
     onFontFamilyChange: ((String) -> Unit)? = null,
     onSelectDeadline: (() -> Unit)? = null,
-    onDelete: (() -> Unit)? = null
+    onDelete: (() -> Unit)? = null,
+    reminderAt: Long = 0L,
+    onSetReminder: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
+    onExportPdf: (() -> Unit)? = null
 ) {
     var showFloatingToolbar by remember { mutableStateOf(false) }
     var showFloatingColorPicker by remember { mutableStateOf(false) }
@@ -999,14 +1022,81 @@ fun KeepStyleFullscreenNoteEditor(
         }
     }
 
+    // Desfazer/refazer: guarda versões do texto, agrupando a digitação contínua
+    val undoStack = remember { mutableStateListOf<TextFieldValue>() }
+    val redoStack = remember { mutableStateListOf<TextFieldValue>() }
+    var lastSnapshotAt by remember { mutableLongStateOf(0L) }
+
+    // Buscar na nota: ocorrências destacadas e navegação entre elas
+    var showFind by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var findIndex by remember { mutableIntStateOf(0) }
+    var revealOffset by remember { mutableStateOf<Int?>(null) }
+    val findMatches = remember(findQuery, contentTextFieldValue.text) {
+        if (findQuery.isBlank()) {
+            emptyList()
+        } else {
+            Regex(Regex.escape(findQuery), RegexOption.IGNORE_CASE)
+                .findAll(contentTextFieldValue.text)
+                .map { it.range }
+                .toList()
+        }
+    }
+    LaunchedEffect(findMatches.size) {
+        if (findIndex >= findMatches.size) findIndex = 0
+    }
+
+    fun setContent(value: TextFieldValue, groupWithTyping: Boolean = true) {
+        // Tocar no texto ou digitar devolve a rolagem ao cursor (sai da ocorrência da busca)
+        if (value.selection != contentTextFieldValue.selection) revealOffset = null
+        if (value.text != contentTextFieldValue.text) {
+            val now = System.currentTimeMillis()
+            if (!groupWithTyping || undoStack.isEmpty() || now - lastSnapshotAt > 800L) {
+                undoStack.add(contentTextFieldValue)
+                if (undoStack.size > 100) undoStack.removeAt(0)
+            }
+            lastSnapshotAt = if (groupWithTyping) now else 0L
+            redoStack.clear()
+            revealOffset = null
+        }
+        contentTextFieldValue = value
+        onContentChange(value.text)
+    }
+
+    fun undo() {
+        val previous = undoStack.removeLastOrNull() ?: return
+        redoStack.add(contentTextFieldValue)
+        contentTextFieldValue = previous
+        onContentChange(previous.text)
+        lastSnapshotAt = 0L
+    }
+
+    fun redo() {
+        val next = redoStack.removeLastOrNull() ?: return
+        undoStack.add(contentTextFieldValue)
+        contentTextFieldValue = next
+        onContentChange(next.text)
+        lastSnapshotAt = 0L
+    }
+
+    fun applyListOperation(transform: (String) -> String) {
+        val newText = transform(contentTextFieldValue.text)
+        setContent(TextFieldValue(newText, TextRange(newText.length)), groupWithTyping = false)
+    }
+
+    fun goToMatch(index: Int) {
+        if (findMatches.isEmpty()) return
+        findIndex = Math.floorMod(index, findMatches.size)
+        revealOffset = findMatches[findIndex].first
+    }
+
     val applyFormat: (NoteFormatType) -> Unit = { type ->
         val (newText, newSelection) = MarkdownHelper.applyFormatting(
             currentText = contentTextFieldValue.text,
             selection = contentTextFieldValue.selection,
             formatType = type
         )
-        contentTextFieldValue = TextFieldValue(newText, newSelection)
-        onContentChange(newText)
+        setContent(TextFieldValue(newText, newSelection), groupWithTyping = false)
     }
 
     val updateFontSize: (Int) -> Unit = { newSize ->
@@ -1112,34 +1202,44 @@ fun KeepStyleFullscreenNoteEditor(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
-                        onClick = {
-                            onSave()
-                            onDismiss()
-                        },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Voltar e salvar"
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                onSave()
+                                onDismiss()
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Voltar e salvar"
+                            )
+                        }
+                        // "Visualizar formatação" fica no menu ⋮ para caber desfazer/refazer
+                        IconButton(
+                            onClick = { undo() },
+                            enabled = undoStack.isNotEmpty() && !isPreviewMode,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("fullscreen_undo_button")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Desfazer")
+                        }
+                        IconButton(
+                            onClick = { redo() },
+                            enabled = redoStack.isNotEmpty() && !isPreviewMode,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("fullscreen_redo_button")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = "Refazer")
+                        }
                     }
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        IconButton(
-                            onClick = { isPreviewMode = !isPreviewMode },
-                            modifier = Modifier.size(40.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isPreviewMode) Icons.Default.Edit else Icons.AutoMirrored.Filled.FormatListBulleted,
-                                contentDescription = if (isPreviewMode) "Editar nota" else "Visualizar formatação",
-                                tint = if (isPreviewMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
                         IconButton(
                             onClick = onTogglePin,
                             modifier = Modifier.size(40.dp)
@@ -1205,6 +1305,104 @@ fun KeepStyleFullscreenNoteEditor(
                                     },
                                     leadingIcon = { Icon(Icons.Default.Mic, null) }
                                 )
+                                DropdownMenuItem(
+                                    text = { Text("Encontrar na nota") },
+                                    onClick = {
+                                        showTopMoreMenu = false
+                                        isPreviewMode = false
+                                        showFind = true
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.FindInPage, null) }
+                                )
+
+                                // Listas (inspirado no Google Keep e no ColorNote)
+                                HorizontalDivider()
+                                val noteText = contentTextFieldValue.text
+                                val hasListItems = ChecklistOps.hasItems(noteText)
+                                DropdownMenuItem(
+                                    text = { Text(if (hasListItems) "Converter em texto" else "Converter em lista") },
+                                    onClick = {
+                                        showTopMoreMenu = false
+                                        applyListOperation(if (hasListItems) ChecklistOps::toPlainText else ChecklistOps::toChecklist)
+                                    },
+                                    leadingIcon = { Icon(if (hasListItems) Icons.Default.Notes else Icons.Default.Checklist, null) }
+                                )
+                                if (hasListItems) {
+                                    DropdownMenuItem(
+                                        text = { Text("Marcar todos") },
+                                        onClick = {
+                                            showTopMoreMenu = false
+                                            applyListOperation { ChecklistOps.setAllChecked(it, true) }
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.CheckBox, null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Desmarcar todos") },
+                                        onClick = {
+                                            showTopMoreMenu = false
+                                            applyListOperation { ChecklistOps.setAllChecked(it, false) }
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.CheckBoxOutlineBlank, null) }
+                                    )
+                                    if (ChecklistOps.hasCheckedItems(noteText)) {
+                                        DropdownMenuItem(
+                                            text = { Text("Marcados para o fim") },
+                                            onClick = {
+                                                showTopMoreMenu = false
+                                                applyListOperation(ChecklistOps::moveCheckedToBottom)
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.VerticalAlignBottom, null) }
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Excluir marcados") },
+                                            onClick = {
+                                                showTopMoreMenu = false
+                                                applyListOperation(ChecklistOps::removeChecked)
+                                            },
+                                            leadingIcon = { Icon(Icons.Default.DeleteSweep, null) }
+                                        )
+                                    }
+                                }
+
+                                if (onSetReminder != null || onShare != null || onExportPdf != null) {
+                                    HorizontalDivider()
+                                }
+                                if (onSetReminder != null) {
+                                    val hasReminder = reminderAt > System.currentTimeMillis()
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                if (hasReminder) "Lembrete: ${DateTimeHelper.formatShortDateTime(reminderAt)}"
+                                                else "Lembrete"
+                                            )
+                                        },
+                                        onClick = {
+                                            showTopMoreMenu = false
+                                            onSetReminder()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Alarm, null) }
+                                    )
+                                }
+                                if (onShare != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Compartilhar") },
+                                        onClick = {
+                                            showTopMoreMenu = false
+                                            onShare()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Share, null) }
+                                    )
+                                }
+                                if (onExportPdf != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Exportar PDF") },
+                                        onClick = {
+                                            showTopMoreMenu = false
+                                            onExportPdf()
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) }
+                                    )
+                                }
                                 if (onSelectDeadline != null) {
                                     DropdownMenuItem(
                                         text = { Text("Prazo de expiração") },
@@ -1264,6 +1462,96 @@ fun KeepStyleFullscreenNoteEditor(
                                     maxLines = 1,
                                     softWrap = false
                                 )
+                            }
+                        }
+                    }
+                }
+
+                // Barra "Encontrar na nota"
+                if (showFind) {
+                    val findFocus = remember { FocusRequester() }
+                    LaunchedEffect(Unit) { findFocus.requestFocus() }
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .testTag("find_in_note_bar")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            BasicTextField(
+                                value = findQuery,
+                                onValueChange = {
+                                    findQuery = it
+                                    findIndex = 0
+                                    revealOffset = Regex(Regex.escape(it), RegexOption.IGNORE_CASE)
+                                        .takeIf { _ -> it.isNotBlank() }
+                                        ?.find(contentTextFieldValue.text)?.range?.first
+                                },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { goToMatch(findIndex + 1) }),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(findFocus)
+                                    .testTag("find_in_note_input"),
+                                decorationBox = { inner ->
+                                    if (findQuery.isEmpty()) {
+                                        Text(
+                                            "Encontrar na nota",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    inner()
+                                }
+                            )
+                            Text(
+                                text = when {
+                                    findQuery.isBlank() -> ""
+                                    findMatches.isEmpty() -> "0/0"
+                                    else -> "${findIndex + 1}/${findMatches.size}"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                            IconButton(
+                                onClick = { goToMatch(findIndex - 1) },
+                                enabled = findMatches.isNotEmpty(),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Ocorrência anterior")
+                            }
+                            IconButton(
+                                onClick = { goToMatch(findIndex + 1) },
+                                enabled = findMatches.isNotEmpty(),
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Próxima ocorrência")
+                            }
+                            IconButton(
+                                onClick = {
+                                    showFind = false
+                                    findQuery = ""
+                                    revealOffset = null
+                                },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Fechar busca")
                             }
                         }
                     }
@@ -1479,25 +1767,48 @@ fun KeepStyleFullscreenNoteEditor(
                         val cursorBringIntoView = remember { BringIntoViewRequester() }
                         var contentLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
                         val cursorBottomRoomPx = with(density) { 96.dp.toPx() }
-                        LaunchedEffect(contentTextFieldValue.text, contentTextFieldValue.selection, windowHeightPx) {
+                        LaunchedEffect(contentTextFieldValue.text, contentTextFieldValue.selection, windowHeightPx, revealOffset) {
                             val layout = contentLayout ?: return@LaunchedEffect
                             val transformed = richVisualTransformation.filter(AnnotatedString(contentTextFieldValue.text))
+                            // Na busca, mostra a ocorrência atual; senão, o cursor
+                            val target = (revealOffset ?: contentTextFieldValue.selection.end)
+                                .coerceIn(0, contentTextFieldValue.text.length)
                             val offset = transformed.offsetMapping
-                                .originalToTransformed(contentTextFieldValue.selection.end)
+                                .originalToTransformed(target)
                                 .coerceIn(0, layout.layoutInput.text.length)
                             val cursor = layout.getCursorRect(offset)
                             cursorBringIntoView.bringIntoView(cursor.copy(bottom = cursor.bottom + cursorBottomRoomPx))
                         }
+                        val matchColor = MaterialTheme.colorScheme.primaryContainer
+                        val currentMatchColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                        val fieldTransformation = remember(richVisualTransformation, showFind, findMatches, findIndex, matchColor, currentMatchColor) {
+                            if (showFind && findMatches.isNotEmpty()) {
+                                FindHighlightTransformation(richVisualTransformation, findMatches, findIndex, matchColor, currentMatchColor)
+                            } else {
+                                richVisualTransformation
+                            }
+                        }
                         BasicTextField(
                             value = contentTextFieldValue,
                             onValueChange = { newValue ->
-                                contentTextFieldValue = newValue
-                                if (newValue.text != content) {
-                                    onContentChange(newValue.text)
+                                // Enter depois de um item de lista já abre o próximo item
+                                val continued = if (newValue.selection.collapsed) {
+                                    ChecklistOps.continueListOnNewline(
+                                        contentTextFieldValue.text,
+                                        newValue.text,
+                                        newValue.selection.end
+                                    )
+                                } else {
+                                    null
+                                }
+                                if (continued != null) {
+                                    setContent(TextFieldValue(continued.first, TextRange(continued.second)), groupWithTyping = false)
+                                } else {
+                                    setContent(newValue)
                                 }
                             },
                             onTextLayout = { contentLayout = it },
-                            visualTransformation = richVisualTransformation,
+                            visualTransformation = fieldTransformation,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
                                 fontSize = currentFontSize.sp,
                                 lineHeight = (currentFontSize * 1.5).sp,
