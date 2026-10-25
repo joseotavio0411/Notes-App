@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -379,6 +380,13 @@ class ProductivityViewModel(application: Application) : AndroidViewModel(applica
         // Fica depois das propriedades acima, que precisam estar inicializadas
         rescheduleNoteReminders()
         refreshPinnedNoteNotifications()
+
+        // Widgets "Nota" acompanham as edições, exclusões e arquivamentos
+        viewModelScope.launch {
+            combine(repository.allNotes, repository.archivedNotes) { active, archived -> active to archived }
+                .drop(1)
+                .collect { com.example.widget.NoteWidget.refreshAll(getApplication()) }
+        }
     }
 
     fun addNote(

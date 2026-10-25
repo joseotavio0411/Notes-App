@@ -1790,23 +1790,7 @@ fun KeepStyleFullscreenNoteEditor(
                         }
                         BasicTextField(
                             value = contentTextFieldValue,
-                            onValueChange = { newValue ->
-                                // Enter depois de um item de lista já abre o próximo item
-                                val continued = if (newValue.selection.collapsed) {
-                                    ChecklistOps.continueListOnNewline(
-                                        contentTextFieldValue.text,
-                                        newValue.text,
-                                        newValue.selection.end
-                                    )
-                                } else {
-                                    null
-                                }
-                                if (continued != null) {
-                                    setContent(TextFieldValue(continued.first, TextRange(continued.second)), groupWithTyping = false)
-                                } else {
-                                    setContent(newValue)
-                                }
-                            },
+                            onValueChange = { newValue -> setContent(newValue) },
                             onTextLayout = { contentLayout = it },
                             visualTransformation = fieldTransformation,
                             textStyle = MaterialTheme.typography.bodyLarge.copy(

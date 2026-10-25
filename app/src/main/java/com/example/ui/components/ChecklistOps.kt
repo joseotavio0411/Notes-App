@@ -78,29 +78,4 @@ object ChecklistOps {
         }
         return result.joinToString("\n")
     }
-
-    /**
-     * Continua a lista ao apertar Enter: se a nova quebra de linha veio depois de um item,
-     * a linha nova já começa com "[ ] ". Enter num item vazio remove o marcador.
-     * Retorna null quando não há nada a fazer.
-     */
-    fun continueListOnNewline(oldText: String, newText: String, cursor: Int): Pair<String, Int>? {
-        if (newText.length != oldText.length + 1) return null
-        if (cursor <= 0 || cursor > newText.length || newText[cursor - 1] != '\n') return null
-        if (oldText != newText.removeRange(cursor - 1, cursor)) return null
-
-        val lineStart = newText.lastIndexOf('\n', cursor - 2) + 1
-        val previousLine = newText.substring(lineStart, cursor - 1)
-        val item = parse(previousLine) ?: return null
-
-        return if (item.text.isBlank()) {
-            // Item vazio + Enter: sai da lista, apagando o marcador e a quebra
-            val replaced = newText.removeRange(lineStart, cursor)
-            replaced to lineStart
-        } else {
-            val prefix = "${item.indent}${item.dash}[ ] "
-            val inserted = newText.substring(0, cursor) + prefix + newText.substring(cursor)
-            inserted to cursor + prefix.length
-        }
-    }
 }

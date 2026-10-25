@@ -736,8 +736,7 @@ fun NoteCard(
                     if (hasReminder) {
                         Surface(
                             shape = RoundedCornerShape(10.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                            modifier = Modifier.weight(1f, fill = false)
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,

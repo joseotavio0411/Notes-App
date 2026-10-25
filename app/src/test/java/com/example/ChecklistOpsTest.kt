@@ -3,7 +3,6 @@ package com.example
 import com.example.ui.components.ChecklistOps
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -45,30 +44,5 @@ class ChecklistOpsTest {
         assertEquals("Título\n[ ] B", ChecklistOps.removeChecked("Título\n[x] A\n[ ] B\n[X] C"))
         assertTrue(ChecklistOps.hasCheckedItems("[X] C"))
         assertFalse(ChecklistOps.hasCheckedItems("[ ] C"))
-    }
-
-    @Test
-    fun `enter depois de um item abre outro item`() {
-        val old = "[ ] Arroz"
-        val new = "[ ] Arroz\n"
-        val (text, cursor) = ChecklistOps.continueListOnNewline(old, new, new.length)!!
-        assertEquals("[ ] Arroz\n[ ] ", text)
-        assertEquals(text.length, cursor)
-    }
-
-    @Test
-    fun `enter num item vazio sai da lista`() {
-        val old = "[ ] Arroz\n[ ] "
-        val new = "[ ] Arroz\n[ ] \n"
-        val (text, cursor) = ChecklistOps.continueListOnNewline(old, new, new.length)!!
-        assertEquals("[ ] Arroz\n", text)
-        assertEquals(text.length, cursor)
-    }
-
-    @Test
-    fun `enter em texto comum nao faz nada`() {
-        assertNull(ChecklistOps.continueListOnNewline("Olá", "Olá\n", 4))
-        // Colar várias linhas também não é Enter
-        assertNull(ChecklistOps.continueListOnNewline("[ ] A", "[ ] A\nB\n", 8))
     }
 }
